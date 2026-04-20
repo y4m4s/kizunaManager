@@ -1,4 +1,36 @@
-# Python
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+.vite/
+coverage/
+*.tsbuildinfo
+*.local
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local app data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.db.bak
+*.db-journal.stale
+data/cache/
+data/recovery/
+data/recovery/**
+data/images/**
+!data/images/
+!data/images/items/
+!data/images/items/item_icon_favor_selection.webp
+!data/images/items/Cafe_Interaction_Gift_02.png
+!data/images/items/Cafe_Interaction_Gift_03.png
+!data/images/items/Cafe_Interaction_Gift_04.png
+
+# Legacy local Python artifacts
 .venv/
 __pycache__/
 *.pyc
@@ -7,21 +39,6 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-
-# Local databases and runtime files
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-data/cache/
-data/images/
-
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/dist-ssr/
-frontend/.vite/
-*.local
 
 # Logs
 logs/

@@ -1,50 +1,21 @@
-# ブルーアーカイブ 絆マネージャー
+# Blue Archive Kizuna Manager
 
-ブルーアーカイブの絆管理を、ローカル完結で軽く扱うためのデスクトップアプリです。  
-現在のメイン構成は `React + TypeScript + Vite` のフロントエンドと、`Python + SQLite + pywebview` のデスクトップバックエンドです。
+Blue Archive の絆管理をローカルで使うための Web アプリです。
 
-## 主な機能
+## 技術構成
 
-- 検索画面
-  - `贈り物から検索` と `生徒から選択` の2モード
-  - 相性ごとの贈り物表示
-  - 中の非表示や結果行の一時非表示
-- 管理画面
-  - 上部検索バーから管理対象の生徒を追加
-  - 一覧の中で `現在絆 / 目標 / 優先度 / 必要EXP` を直接編集
-  - 優先度は `最優先 / 優先 / 見送り / 終了`
-  - 優先度順で自動ソート
-- 最適化画面
-  - 贈り物在庫をタイル形式で編集
-  - 選択式ボックス在庫を `橙大` 扱いで計算に含める
-  - `最優先 / 優先` の生徒を対象に配分を計算
-  - 使わなかった贈り物の種類と残数も表示
-- マスターデータ更新
-  - GUI の `最新データ更新` と `画像ダウンロード` ボタンから実行
-  - 実行中は進捗モーダルを表示
-
-## 技術スタック
-
-- フロントエンド: React 19, TypeScript, Vite, ESLint
-- デスクトップ実行基盤: pywebview
-- バックエンド相当: Python, sqlite3, requests
-- ローカルデータ: SQLite
-- 画像処理: Pillow
-
-補足:  
-`src/ui/` には旧 Tk 系 UI コードも残っていますが、現在のメイン導線は `main.py` から起動する React + pywebview 構成です。
+- Frontend: React + TypeScript + Vite
+- Backend: Node.js + TypeScript
+- Database: SQLite
 
 ## セットアップ
 
-### 1. Python 依存を入れる
+前提:
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+- Node.js 22 以上
+- npm
 
-### 2. フロントエンド依存を入れる
+依存関係のインストール:
 
 ```powershell
 cd frontend
@@ -52,83 +23,55 @@ npm install
 cd ..
 ```
 
-## 起動方法
+## 開発起動
 
-### 通常起動
-
-事前にフロントエンドをビルドしてください。
+ルートでこれだけです。
 
 ```powershell
-cd frontend
-npm run build
-cd ..
-python main.py
-```
-
-`main.py` は `frontend/dist/index.html` を読み込み、pywebview のデスクトップウィンドウとして起動します。
-
-### 開発起動
-
-ターミナルを2つ使います。
-
-ターミナル1:
-
-```powershell
-cd frontend
 npm run dev
 ```
 
-ターミナル2:
+起動先:
+
+- Backend API: `http://127.0.0.1:8787`
+- Frontend: `http://127.0.0.1:5173`
+
+## 本番相当の起動
 
 ```powershell
-cd c:\BA
-.venv\Scripts\Activate.ps1
-python main.py --dev
+npm run build
+npm run start
 ```
 
-注意:  
-`http://localhost:5173` をブラウザで直接開いても、Python 側 API が無いためデータは表示されません。  
-必ず `python main.py --dev` で開いた pywebview ウィンドウを使ってください。
+`npm run start` は `frontend/dist` を配信します。
 
-## マスターデータ更新
-
-初回起動時は、サンプルのマスターデータで自動起動できます。  
-通常起動時は、必要に応じて `schaledb.com` から最新データを確認し、古い場合は更新します。
-
-GUI から更新:
-
-- `最新データ更新`: 最新データ取得 + DB反映 + 未取得画像のダウンロード
-- `画像ダウンロード`: 画像だけ再取得
-
-手動更新:
-
-```powershell
-python scripts/fetch_master_data.py
-python scripts/fetch_master_data.py --with-icons
-```
-
-## 保存先
+## 保存場所
 
 - DB: `data/bond_manager.db`
-- キャッシュ: `data/cache/`
+- キャッシュ JSON: `data/cache/`
 - 画像: `data/images/`
-- フロントのビルド成果物: `frontend/dist/`
 
-## ディレクトリ構成
+## 保持している UI 用画像
+
+以下の 4 ファイルは `.gitignore` 例外として保持しています。
+※Schale DBから落としたものとは別途用意したものであるため。
+
+- `data/images/items/item_icon_favor_selection.webp`
+- `data/images/items/Cafe_Interaction_Gift_02.png`
+- `data/images/items/Cafe_Interaction_Gift_03.png`
+- `data/images/items/Cafe_Interaction_Gift_04.png`
+
+## ディレクトリ
 
 ```text
-main.py
-requirements.txt
-README.md
-.gitignore
-data/
+backend/
+  src/
 frontend/
+  src/
+data/
 scripts/
-src/
 ```
 
-## 開発ショートカット
+## 補足
 
-- `launch-dev.cmd` をダブルクリックすると、開発用の起動をまとめて実行できます。
-- `frontend` の dev server が未起動なら自動で別ウィンドウで `npm run dev` を立ち上げ、その後に `python main.py --dev` を起動します。
-- すでに `http://127.0.0.1:5173` が起動済みなら、そのまま再利用してアプリだけを開きます。
+- 現在の正式な起動方法は `npm run dev` または `npm run build && npm run start` です。

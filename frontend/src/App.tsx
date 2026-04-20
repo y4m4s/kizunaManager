@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
-import { api, isPywebview, isPywebviewReady, onPyEvent, waitForPywebviewReady } from './api'
+import { api, pollTask, waitForBackendReady } from './api'
 import { ProgressModal } from './components/common/ProgressModal'
 import { Sidebar } from './components/layout/Sidebar'
 import { ManageScreen } from './screens/ManageScreen'
@@ -9,70 +9,6 @@ import { SearchScreen } from './screens/SearchScreen'
 import type { MasterStatus } from './types'
 
 type Tab = 'search' | 'manage' | 'optimize'
-
-/*
-function LegacyApp() {
-  const [activeTab, setActiveTab] = useState<Tab>('search')
-
-  return (
-    <div className="app">
-      legacy sidebar block
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h1 className="app-title">ブルーアーカイブ<br />絆マネージャー</h1>
-          <p className="app-subtitle">軽量・ローカル完結・扱いやすいUX</p>
-        </div>
-
-        <nav className="nav">
-          {(['search', 'manage', 'optimize'] as Tab[]).map((tab) => (
-            <button
-              key={tab}
-              className={`nav-item ${activeTab === tab ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab === 'search' && '検索'}
-              {tab === 'manage' && '管理'}
-              {tab === 'optimize' && '最適化'}
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      legacy content block
-      <div className="content">
-        <header className="topbar">
-          <div>
-            <h2 className="topbar-title">Blue Archive Bond Manager</h2>
-            <p className="topbar-sub">検索から管理、配分までを1画面でつなぐデスクトップツール</p>
-          </div>
-          <div className="topbar-actions">
-            <button className="btn btn-primary">最新データ更新</button>
-            <button className="btn">画像ダウンロード</button>
-          </div>
-        </header>
-
-        <main className="main">
-          {activeTab === 'search' && (
-            <div className="placeholder">
-              <p>🔍 検索画面（実装予定）</p>
-            </div>
-          )}
-          {activeTab === 'manage' && (
-            <div className="placeholder">
-              <p>📋 管理画面（実装予定）</p>
-            </div>
-          )}
-          {activeTab === 'optimize' && (
-            <div className="placeholder">
-              <p>⚡ 最適化画面（実装予定）</p>
-            </div>
-          )}
-        </main>
-      </div>
-    </div>
-  )
-}
-*/
 
 type ProgressState = {
   current: number
@@ -92,7 +28,7 @@ const INITIAL_PROGRESS: ProgressState = {
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('search')
-  const [bridgeReady, setBridgeReady] = useState(isPywebviewReady())
+  const [backendReady, setBackendReady] = useState(false)
   const [masterStatus, setMasterStatus] = useState<MasterStatus | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
   const [progress, setProgress] = useState<ProgressState>(INITIAL_PROGRESS)
@@ -101,31 +37,22 @@ function App() {
   useEffect(() => {
     let disposed = false
 
-    async function waitBridge() {
-      if (isPywebviewReady()) {
-        setBridgeReady(true)
-        return
-      }
-
-      const ready = await waitForPywebviewReady(15000)
+    async function connectBackend() {
+      const ready = await waitForBackendReady(15000)
       if (disposed) {
         return
       }
-
-      setBridgeReady(ready)
+      setBackendReady(ready)
       if (ready) {
         setRefreshToken((current) => current + 1)
-        return
+      } else {
+        setNotice(
+          'バックエンドへ接続できませんでした。`npm run dev` か `npm run start` のログを確認してください。',
+        )
       }
-
-      setNotice(
-        !isPywebview()
-          ? '`python main.py --dev` で開いたアプリウィンドウから確認してください。ブラウザ単体ではデータを読み込めません。'
-          : 'バックエンドとの接続を確認できませんでした。`python main.py --dev` で開いた pywebview ウィンドウを使っているか確認してください。',
-      )
     }
 
-    void waitBridge()
+    void connectBackend()
 
     return () => {
       disposed = true
@@ -136,122 +63,82 @@ function App() {
     let disposed = false
 
     async function loadStatus() {
-      if (!bridgeReady) {
+      if (!backendReady) {
         return
       }
-      const status = await api.get_master_status()
-      if (!disposed && status && typeof status === 'object') {
-        setMasterStatus(status as MasterStatus)
+      try {
+        const status = await api.get_master_status()
+        if (!disposed) {
+          setMasterStatus(status)
+        }
+      } catch (error) {
+        if (!disposed) {
+          setNotice(error instanceof Error ? error.message : String(error))
+        }
       }
     }
 
     void loadStatus()
+
     return () => {
       disposed = true
     }
-  }, [bridgeReady, refreshToken])
+  }, [backendReady, refreshToken])
 
-  useEffect(() => {
-    const offUpdateProgress = onPyEvent('onMasterUpdateProgress', (payload) => {
+  async function runTask(
+    title: string,
+    starter: () => Promise<{ task_id?: string; error?: string }>,
+    successMessage: string,
+  ) {
+    if (!backendReady) {
+      setNotice('バックエンドへの接続を待っています。数秒後に再度お試しください。')
+      return
+    }
+
+    try {
+      const response = await starter()
+      if (!response?.task_id) {
+        setNotice(response?.error || '処理の開始に失敗しました。')
+        return
+      }
+
+      setNotice('')
       setProgress({
-        current: payload.current,
-        message: payload.message,
+        current: 0,
+        message: '処理を開始しています...',
         open: true,
-        title: '最新データ更新',
-        total: payload.total,
+        title,
+        total: 1,
       })
-    })
-    const offUpdateDone = onPyEvent('onMasterUpdateDone', () => {
-      setProgress(INITIAL_PROGRESS)
-      setNotice('最新データの取得が完了しました。')
-      setRefreshToken((current) => current + 1)
-    })
-    const offUpdateError = onPyEvent('onMasterUpdateError', (payload) => {
-      setProgress(INITIAL_PROGRESS)
-      setNotice(`最新データ更新に失敗しました: ${payload.error}`)
-    })
-    const offIconProgress = onPyEvent('onIconDownloadProgress', (payload) => {
-      setProgress({
-        current: payload.current,
-        message: payload.message,
-        open: true,
-        title: '画像ダウンロード',
-        total: payload.total,
+
+      const snapshot = await pollTask(response.task_id, (task) => {
+        setProgress({
+          current: task.current,
+          message: task.message,
+          open: task.status === 'running',
+          title,
+          total: task.total,
+        })
       })
-    })
-    const offIconDone = onPyEvent('onIconDownloadDone', () => {
+
+      if (snapshot.status === 'error') {
+        setNotice(`${title}に失敗しました: ${snapshot.error || 'unknown error'}`)
+      } else {
+        setNotice(successMessage)
+        setRefreshToken((current) => current + 1)
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error))
+    } finally {
       setProgress(INITIAL_PROGRESS)
-      setNotice('画像ダウンロードが完了しました。')
-      setRefreshToken((current) => current + 1)
-    })
-    const offIconError = onPyEvent('onIconDownloadError', (payload) => {
-      setProgress(INITIAL_PROGRESS)
-      setNotice(`画像ダウンロードに失敗しました: ${payload.error}`)
-    })
-
-    return () => {
-      offUpdateProgress()
-      offUpdateDone()
-      offUpdateError()
-      offIconProgress()
-      offIconDone()
-      offIconError()
     }
-  }, [])
-
-  async function startMasterUpdate() {
-    if (!bridgeReady) {
-      setNotice(
-        isPywebview()
-          ? 'バックエンドとの接続を待っています。数秒待ってからもう一度試してください。'
-          : '`python main.py --dev` で開いたアプリウィンドウから更新してください。',
-      )
-      return
-    }
-    const response = await api.update_master_data()
-    if (!response || response?.error) {
-      setNotice(response?.error || '更新を開始できませんでした。')
-      return
-    }
-    setNotice('')
-    setProgress({
-      current: 0,
-      message: '最新データを取得しています...',
-      open: true,
-      title: '最新データ更新',
-      total: 1,
-    })
-  }
-
-  async function startIconDownload() {
-    if (!bridgeReady) {
-      setNotice(
-        isPywebview()
-          ? 'バックエンドとの接続を待っています。数秒待ってからもう一度試してください。'
-          : '`python main.py --dev` で開いたアプリウィンドウから更新してください。',
-      )
-      return
-    }
-    const response = await api.download_icons()
-    if (!response || response?.error) {
-      setNotice(response?.error || '画像ダウンロードを開始できませんでした。')
-      return
-    }
-    setNotice('')
-    setProgress({
-      current: 0,
-      message: '画像をダウンロードしています...',
-      open: true,
-      title: '画像ダウンロード',
-      total: 1,
-    })
   }
 
   function renderScreen() {
     if (activeTab === 'manage') {
       return (
         <ManageScreen
-          bridgeReady={bridgeReady}
+          bridgeReady={backendReady}
           refreshToken={refreshToken}
           onDataChanged={() => setRefreshToken((current) => current + 1)}
         />
@@ -261,14 +148,14 @@ function App() {
     if (activeTab === 'optimize') {
       return (
         <OptimizeScreen
-          bridgeReady={bridgeReady}
+          bridgeReady={backendReady}
           onDataChanged={() => setRefreshToken((current) => current + 1)}
           refreshToken={refreshToken}
         />
       )
     }
 
-    return <SearchScreen bridgeReady={bridgeReady} refreshToken={refreshToken} />
+    return <SearchScreen bridgeReady={backendReady} refreshToken={refreshToken} />
   }
 
   return (
@@ -278,9 +165,13 @@ function App() {
           activeTab={activeTab}
           busy={progress.open}
           masterStatus={masterStatus}
-          onDownloadIcons={() => void startIconDownload()}
+          onDownloadIcons={() =>
+            void runTask('画像ダウンロード', () => api.download_icons(), '画像ダウンロードが完了しました。')
+          }
           onSelect={(tab) => setActiveTab(tab)}
-          onUpdateMaster={() => void startMasterUpdate()}
+          onUpdateMaster={() =>
+            void runTask('最新データ更新', () => api.update_master_data(), '最新データの更新が完了しました。')
+          }
         />
 
         <div className="content">

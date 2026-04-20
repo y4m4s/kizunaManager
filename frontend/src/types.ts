@@ -1,5 +1,3 @@
-// Python 側の dict 構造に対応する TypeScript 型定義
-
 export interface Student {
   id: number
   name: string
@@ -18,9 +16,9 @@ export interface Student {
 export interface Item {
   id: number
   name: string
-  rarity: string        // "SR" | "SSR"
+  rarity: string
   icon_path: string
-  gift_kind: string     // "gift" | "bouquet"
+  gift_kind: string
   tags: string[]
   exp_value: number
   quantity: number
@@ -31,8 +29,8 @@ export interface SlimItem {
   name: string
   rarity: string
   icon_path: string
-  effect: string        // "extra_large" | "large" | "medium"
-  effect_label: string  // "特大" | "大" | "中"
+  effect: string
+  effect_label: string
   gained_exp: number
   quantity: number
   gift_kind: string
@@ -86,6 +84,7 @@ export interface OptimizeResult {
     days_until_birthday: number
     priority: PriorityKey
     current_bond_level: number
+    current_bond_exp?: number
     target_bond_level: number
     required_exp: number
     passive_exp: number
@@ -127,12 +126,15 @@ export interface OptimizeResult {
   error?: string
 }
 
-// pywebview イベントのペイロード型
-export interface PyEventMap {
-  onMasterUpdateProgress: { message: string; current: number; total: number }
-  onMasterUpdateDone: { result: Record<string, unknown> }
-  onMasterUpdateError: { error: string }
-  onIconDownloadProgress: { message: string; current: number; total: number }
-  onIconDownloadDone: { result: Record<string, unknown> }
-  onIconDownloadError: { error: string }
+export interface TaskSnapshot {
+  id: string
+  kind: string
+  status: 'running' | 'done' | 'error'
+  message: string
+  current: number
+  total: number
+  started_at: string
+  finished_at?: string
+  result?: Record<string, unknown>
+  error?: string
 }
