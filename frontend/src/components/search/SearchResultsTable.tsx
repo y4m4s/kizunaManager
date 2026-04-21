@@ -87,14 +87,14 @@ export function SearchResultsTable({
               } as CSSProperties
             }
           >
-            <div className="result-student-cell">
+            <div className="result-student-cell" data-label="生徒">
               <div className="result-student-main">
                 <IconThumb filePath={row.icon_path} label={row.student_name} size={40} tone="student" />
                 <strong>{row.student_name}</strong>
               </div>
               {mode === 'gift' ? (
                 <button
-                  aria-label={`${row.student_name} を非表示`}
+                  aria-label={`${row.student_name}を非表示`}
                   className="ghost-icon-button"
                   type="button"
                   onClick={() => onHideRow(row.student_id)}

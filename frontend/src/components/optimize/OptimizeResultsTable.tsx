@@ -1,4 +1,4 @@
-﻿import { assetUrl } from '../../api'
+import { assetUrl } from '../../api'
 import { OPTIMIZE_PRIORITY_OPTIONS } from '../../constants'
 import { formatNumber } from '../../lib/bond'
 import { effectIconUrl, SELECTABLE_BOX_ICON_URL } from '../../lib/uiAssets'
@@ -19,9 +19,19 @@ type OptimizeResultsTableProps = {
 const SELECTABLE_BOX_ITEM_ID = -1001
 const SELECTABLE_BOX_LABEL = '選択式ボックス'
 
+function isBouquetDisplayItem(
+  item: { item_name?: string; gift_kind?: string },
+  fallbackItem?: Item,
+): boolean {
+  return item.gift_kind === 'bouquet' ||
+    fallbackItem?.gift_kind === 'bouquet' ||
+    String(item.item_name || fallbackItem?.name || '').includes('\u82b1\u675f')
+}
+
 function toneClassForGift(
   item: {
     item_id: number
+    item_name?: string
     gift_kind?: string
     rarity?: string
   },
@@ -32,7 +42,7 @@ function toneClassForGift(
   if (item.item_id === SELECTABLE_BOX_ITEM_ID || giftKind === 'gift_box') {
     return 'gift-box'
   }
-  if (giftKind === 'bouquet') {
+  if (isBouquetDisplayItem(item, fallbackItem)) {
     return 'bouquet'
   }
   if (rarity === 'SSR') {
@@ -53,6 +63,39 @@ function imageSrcForGift(
     return SELECTABLE_BOX_ICON_URL
   }
   return assetUrl(item.icon_path || fallbackItem?.icon_path || '')
+}
+
+function giftDisplayRank(
+  item: { item_id: number; item_name?: string; gift_kind?: string; rarity?: string },
+  fallbackItem?: Item,
+): number {
+  const giftKind = item.gift_kind || fallbackItem?.gift_kind || 'gift'
+  const rarity = item.rarity || fallbackItem?.rarity || ''
+  if (item.item_id === SELECTABLE_BOX_ITEM_ID || giftKind === 'gift_box') {
+    return 3
+  }
+  if (rarity === 'SSR' && !isBouquetDisplayItem(item, fallbackItem)) {
+    return 0
+  }
+  if (isBouquetDisplayItem(item, fallbackItem)) {
+    return 1
+  }
+  return 2
+}
+
+function sortGiftDisplayItems<T extends { item_id: number; item_name: string; gift_kind?: string; rarity?: string }>(
+  items: T[],
+  fallbackItemsById: Record<number, Item>,
+): T[] {
+  return [...items].sort((left, right) => {
+    const leftFallback = fallbackItemsById[left.item_id]
+    const rightFallback = fallbackItemsById[right.item_id]
+    const rankDiff = giftDisplayRank(left, leftFallback) - giftDisplayRank(right, rightFallback)
+    if (rankDiff !== 0) {
+      return rankDiff
+    }
+    return left.item_name.localeCompare(right.item_name, 'ja')
+  })
 }
 
 export function OptimizeResultsTable({
@@ -91,7 +134,7 @@ export function OptimizeResultsTable({
           const daysLabel = birthday === '-' ? '-' : `あと${row.days_until_birthday}日`
           return (
             <div key={row.student_id} className="optimize-table-row">
-              <div className="opt-student-cell">
+              <div className="opt-student-cell" data-label="生徒">
                 <IconThumb
                   filePath={student?.icon_path}
                   label={row.student_name}
@@ -100,9 +143,9 @@ export function OptimizeResultsTable({
                 />
                 <strong>{row.student_name}</strong>
               </div>
-              <div className="opt-birthday-cell">{birthday}</div>
-              <div className="opt-days-cell">{daysLabel}</div>
-              <div className="opt-priority-cell">
+              <div className="opt-birthday-cell" data-label="誕生日">{birthday}</div>
+              <div className="opt-days-cell" data-label="あと">{daysLabel}</div>
+              <div className="opt-priority-cell" data-label="優先度">
                 <select
                   className="select-input compact opt-priority-select"
                   disabled={prioritySavingStudentId === row.student_id}
@@ -116,17 +159,17 @@ export function OptimizeResultsTable({
                   ))}
                 </select>
               </div>
-              <div className="opt-allocated-cell">
+              <div className="opt-allocated-cell" data-label="獲得EXP">
                 <span className="opt-exp-breakdown">
                   <span className="opt-exp-main">{formatNumber(row.allocated_exp)}</span>
                   <span className="opt-exp-passive">{`+${formatNumber(row.passive_exp)}`}</span>
                 </span>
               </div>
-              <div>{`Lv${row.current_bond_level} ⇒ Lv${row.predicted_level}`}</div>
-              <div className="opt-items-cell">
+              <div className="opt-predicted-cell" data-label="到達予測">{`Lv${row.current_bond_level} ⇒ Lv${row.predicted_level}`}</div>
+              <div className="opt-items-cell" data-label="配分内訳">
                 {row.allocated_items.length ? (
                   <div className="opt-items-grid">
-                    {row.allocated_items.map((item) => {
+                    {sortGiftDisplayItems(row.allocated_items, fallbackItemsById).map((item) => {
                       const fallbackItem = fallbackItemsById[item.item_id]
                       const toneClass = toneClassForGift(item, fallbackItem)
                       const imageSrc = imageSrcForGift(item, fallbackItem)
@@ -184,7 +227,7 @@ export function OptimizeResultsTable({
             <h3>未使用の贈り物</h3>
             {result.leftovers.length ? (
               <div className="opt-items-grid">
-                {result.leftovers.map((item) => {
+                {sortGiftDisplayItems(result.leftovers, fallbackItemsById).map((item) => {
                   const fallbackItem = fallbackItemsById[item.item_id]
                   const toneClass = toneClassForGift(item, fallbackItem)
                   const imageSrc = imageSrcForGift(item, fallbackItem)

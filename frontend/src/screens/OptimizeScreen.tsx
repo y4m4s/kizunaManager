@@ -23,11 +23,15 @@ function loadPersistedCount(key: string): string {
   return stored && /^\d+$/.test(stored) ? stored : '0'
 }
 
+function isBouquetItem(item: Pick<Item, 'gift_kind' | 'name'>): boolean {
+  return item.gift_kind === 'bouquet' || item.name.includes('\u82b1\u675f')
+}
+
 function inventoryGroupRank(item: Item): number {
-  if (item.gift_kind === 'bouquet') {
+  if (item.rarity === 'SSR' && !isBouquetItem(item)) {
     return 0
   }
-  if (item.rarity === 'SSR') {
+  if (isBouquetItem(item)) {
     return 1
   }
   return 2
@@ -434,4 +438,6 @@ export function OptimizeScreen({
     </div>
   )
 }
+
+
 

@@ -24,6 +24,14 @@ import type { ItemRecord, PlanRecord, StudentRecord } from './types.ts'
 
 type SqlParams = Record<string, SQLInputValue> | SQLInputValue[] | undefined
 type RowRecord = Record<string, unknown>
+const BOUQUET_NAME_MARKER = '\u82b1\u675f'
+
+function normalizedItemGiftKind(name: string, giftKind: unknown): string {
+  if (name.includes(BOUQUET_NAME_MARKER)) {
+    return 'bouquet'
+  }
+  return String(giftKind || 'gift')
+}
 
 export class Database {
   private readonly primaryDbPath: string
@@ -169,14 +177,15 @@ export class Database {
   }
 
   private itemFromRow(row: RowRecord): ItemRecord {
+    const itemName = String(row.name || '')
     return {
       id: Number(row.id),
-      name: String(row.name || ''),
+      name: itemName,
       tags: this.loads<string[]>(row.tags, []),
       rarity: String(row.rarity || ''),
       category: String(row.category || ''),
       exp_value: Number(row.exp_value || 0),
-      gift_kind: String(row.gift_kind || 'gift'),
+      gift_kind: normalizedItemGiftKind(itemName, row.gift_kind),
       icon_name: String(row.icon_name || ''),
       icon_path: String(row.icon_path || ''),
       raw_json: this.loads<Record<string, unknown>>(row.raw_json, {}),
@@ -269,6 +278,7 @@ export class Database {
       this.run("UPDATE user_plans SET priority = 'priority' WHERE priority = 'high'")
       this.run("UPDATE user_plans SET priority = 'defer' WHERE priority = 'medium'")
       this.run("UPDATE user_plans SET priority = 'done' WHERE priority = 'low'")
+      this.run("UPDATE master_items SET gift_kind = 'bouquet' WHERE name LIKE '%' || ? || '%'", [BOUQUET_NAME_MARKER])
       this.run(
         "UPDATE user_plans SET priority = 'priority' WHERE COALESCE(priority, '') NOT IN ('top_priority', 'priority', 'semi_priority', 'defer', 'done')",
       )
@@ -349,9 +359,9 @@ export class Database {
     items: Array<Record<string, unknown>>,
     source: string,
   ): void {
-    this.transaction(() => {
-      this.db.exec('PRAGMA foreign_keys = OFF')
-      try {
+    this.db.exec('PRAGMA foreign_keys = OFF')
+    try {
+      this.transaction(() => {
         this.run('DELETE FROM master_students')
         this.run('DELETE FROM master_items')
 
@@ -397,10 +407,10 @@ export class Database {
         this.run('DELETE FROM user_students WHERE student_id NOT IN (SELECT id FROM master_students)')
         this.run('DELETE FROM user_plans WHERE student_id NOT IN (SELECT id FROM master_students)')
         this.run('DELETE FROM user_inventory WHERE item_id NOT IN (SELECT id FROM master_items)')
-      } finally {
-        this.db.exec('PRAGMA foreign_keys = ON')
-      }
-    })
+      })
+    } finally {
+      this.db.exec('PRAGMA foreign_keys = ON')
+    }
     this.setMeta('master_source', source)
   }
 

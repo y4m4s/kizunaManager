@@ -29,70 +29,82 @@ function ManageRowComponent({
 
   return (
     <div className="manage-row">
-      <div className="manage-row-student">
+      <div className="manage-row-student" data-label="生徒">
         <IconThumb filePath={student.icon_path} label={student.name} size={38} tone="student" />
         <span>{student.name}</span>
       </div>
 
-      <input
-        className="text-input compact"
-        inputMode="numeric"
-        type="text"
-        value={draft.currentLevel}
-        onBlur={(event) => onSave({ currentLevel: event.currentTarget.value })}
-        onChange={(event) => onChange({ currentLevel: event.target.value })}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            onSave({ currentLevel: event.currentTarget.value })
+      <label className="manage-row-field" data-label="現在">
+        <input
+          aria-label={`${student.name}の現在絆Lv`}
+          className="text-input compact"
+          inputMode="numeric"
+          type="text"
+          value={draft.currentLevel}
+          onBlur={(event) => onSave({ currentLevel: event.currentTarget.value })}
+          onChange={(event) => onChange({ currentLevel: event.target.value })}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              onSave({ currentLevel: event.currentTarget.value })
+            }
+          }}
+        />
+      </label>
+
+      <label className="manage-row-field" data-label="目標">
+        <input
+          aria-label={`${student.name}の目標絆Lv`}
+          className="text-input compact"
+          inputMode="numeric"
+          type="text"
+          value={draft.targetLevel}
+          onBlur={(event) => onSave({ targetLevel: event.currentTarget.value })}
+          onChange={(event) => onChange({ targetLevel: event.target.value })}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              onSave({ targetLevel: event.currentTarget.value })
+            }
+          }}
+        />
+      </label>
+
+      <label className="manage-row-field manage-row-priority" data-label="優先度">
+        <select
+          className="select-input compact"
+          disabled={!hasTarget}
+          title={hasTarget ? '最適化時の扱いを選びます' : '目標を設定すると変更できます'}
+          value={draft.priority}
+          onChange={(event) =>
+            onChange({ priority: event.target.value as ManageDraft['priority'] })
           }
-        }}
-      />
-
-      <input
-        className="text-input compact"
-        inputMode="numeric"
-        type="text"
-        value={draft.targetLevel}
-        onBlur={(event) => onSave({ targetLevel: event.currentTarget.value })}
-        onChange={(event) => onChange({ targetLevel: event.target.value })}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            onSave({ targetLevel: event.currentTarget.value })
+          onBlur={(event) =>
+            onSave({ priority: event.currentTarget.value as ManageDraft['priority'] })
           }
-        }}
-      />
+        >
+          <option value="top_priority">最優先</option>
+          <option value="priority">優先</option>
+          <option value="semi_priority">準優先</option>
+          <option value="defer">見送り</option>
+          <option value="done">終了</option>
+        </select>
+      </label>
 
-      <select
-        className="select-input compact"
-        disabled={!hasTarget}
-        title={hasTarget ? '最適化時の扱いを選びます' : '目標を設定すると変更できます'}
-        value={draft.priority}
-        onChange={(event) =>
-          onChange({ priority: event.target.value as ManageDraft['priority'] })
-        }
-        onBlur={(event) =>
-          onSave({ priority: event.currentTarget.value as ManageDraft['priority'] })
-        }
-      >
-        <option value="top_priority">最優先</option>
-        <option value="priority">優先</option>
-        <option value="semi_priority">準優先</option>
-        <option value="defer">見送り</option>
-        <option value="done">終了</option>
-      </select>
+      <div className="manage-row-field manage-required" data-label="必要EXP">
+        <span>{requiredExpText}</span>
+      </div>
 
-      <div className="manage-required">{requiredExpText}</div>
-
-      <button
-        aria-label={`${student.name} を管理から外す`}
-        className="ghost-icon-button danger"
-        type="button"
-        onClick={onRemove}
-      >
-        ×
-      </button>
+      <div className="manage-row-remove">
+        <button
+          aria-label={`${student.name}を管理から外す`}
+          className="ghost-icon-button danger"
+          type="button"
+          onClick={onRemove}
+        >
+          ×
+        </button>
+      </div>
     </div>
   )
 }

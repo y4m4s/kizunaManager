@@ -376,7 +376,7 @@ export function ManageScreen({
         <div className="section-head">
           <div>
             <h2>管理</h2>
-            <p>追加、現在絆、目標、優先度の編集をひとつの一覧でまとめて扱えます。</p>
+            <p>追加、現在絆、目標、優先度をひとつの一覧で管理できます。</p>
           </div>
           <div className="summary-badges">
             <span>{`管理中 ${summary.totalCount}人`}</span>
@@ -430,7 +430,7 @@ export function ManageScreen({
         ) : null}
       </section>
 
-      <section className="card-shell">
+      <section className="card-shell manage-table-shell">
         <div className="manage-head-row">
           <span>生徒</span>
           <span>現在</span>
@@ -481,7 +481,7 @@ export function ManageScreen({
       <ConfirmModal
         open={Boolean(removeTarget)}
         title="管理から外す"
-        message={removeTarget ? `${removeTarget.name} を管理から外しますか？` : ''}
+        message={removeTarget ? `${removeTarget.name}を管理から外しますか？` : ''}
         onCancel={() => setRemoveTarget(null)}
         onConfirm={() => void confirmRemoveStudent()}
       />

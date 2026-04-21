@@ -1,10 +1,21 @@
-import type { Item } from '../../types'
+﻿import type { Item } from '../../types'
 import { IconThumb } from '../common/IconThumb'
 
 type GiftPickerProps = {
   items: Item[]
   selectedIds: number[]
   onToggle: (itemId: number) => void
+}
+
+function isBouquetItem(item: Pick<Item, 'gift_kind' | 'name'>): boolean {
+  return item.gift_kind === 'bouquet' || item.name.includes('\u82b1\u675f')
+}
+
+function giftTileTone(item: Item): string {
+  if (isBouquetItem(item)) {
+    return 'bouquet'
+  }
+  return item.rarity === 'SSR' ? 'rarity-ssr' : 'rarity-sr'
 }
 
 export function GiftPicker({ items, selectedIds, onToggle }: GiftPickerProps) {
@@ -23,7 +34,7 @@ export function GiftPicker({ items, selectedIds, onToggle }: GiftPickerProps) {
           return (
             <button
               key={item.id}
-              className={`gift-tile ${selected ? 'selected' : ''} ${item.rarity === 'SSR' ? 'rarity-ssr' : 'rarity-sr'}`}
+              className={`gift-tile ${selected ? 'selected' : ''} ${giftTileTone(item)}`}
               type="button"
               onClick={() => onToggle(item.id)}
             >

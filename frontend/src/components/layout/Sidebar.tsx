@@ -1,4 +1,5 @@
-import { APP_SUBTITLE, APP_TITLE, NAV_ITEMS } from '../../constants'
+﻿import { useState } from 'react'
+import { APP_TITLE, NAV_ITEMS } from '../../constants'
 import type { MasterStatus } from '../../types'
 
 type ActiveTab = (typeof NAV_ITEMS)[number]['key']
@@ -37,20 +38,38 @@ export function Sidebar({
   onSelect,
   onUpdateMaster,
 }: SidebarProps) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  function handleSelect(tab: ActiveTab) {
+    onSelect(tab)
+    setMenuOpen(false)
+  }
+
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${menuOpen ? 'menu-open' : ''}`}>
       <div className="sidebar-header">
         <h1 className="app-title">{APP_TITLE}</h1>
-        <p className="app-subtitle">{APP_SUBTITLE}</p>
+        <button
+          aria-controls="sidebar-nav"
+          aria-expanded={menuOpen}
+          aria-label="メニューを開閉"
+          className="sidebar-menu-button"
+          type="button"
+          onClick={() => setMenuOpen((current) => !current)}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
       </div>
 
-      <nav className="nav">
+      <nav id="sidebar-nav" className="nav">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.key}
             className={`nav-item ${activeTab === item.key ? 'active' : ''}`}
             type="button"
-            onClick={() => onSelect(item.key)}
+            onClick={() => handleSelect(item.key)}
           >
             {item.label}
           </button>

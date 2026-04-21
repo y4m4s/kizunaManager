@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from 'react'
+﻿import { useDeferredValue, useEffect, useState } from 'react'
 import { api } from '../api'
 import { SEARCH_TABS } from '../constants'
 import type { Item, SearchResult, Student } from '../types'
@@ -9,6 +9,30 @@ import { StudentPicker } from '../components/search/StudentPicker'
 type SearchScreenProps = {
   bridgeReady: boolean
   refreshToken: number
+}
+
+function isBouquetItem(item: Pick<Item, 'gift_kind' | 'name'>): boolean {
+  return item.gift_kind === 'bouquet' || item.name.includes('\u82b1\u675f')
+}
+
+function giftDisplayRank(item: Item): number {
+  if (item.rarity === 'SSR' && !isBouquetItem(item)) {
+    return 0
+  }
+  if (isBouquetItem(item)) {
+    return 1
+  }
+  return 2
+}
+
+function sortGiftItems(items: Item[]): Item[] {
+  return [...items].sort((left, right) => {
+    const rankDiff = giftDisplayRank(left) - giftDisplayRank(right)
+    if (rankDiff !== 0) {
+      return rankDiff
+    }
+    return left.name.localeCompare(right.name, 'ja')
+  })
 }
 
 export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
@@ -42,18 +66,7 @@ export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
         return
       }
       setStudents(Array.isArray(studentRows) ? studentRows : [])
-      setItems(
-        (Array.isArray(itemRows) ? itemRows : [])
-          .filter((item) => item.gift_kind !== 'bouquet')
-          .sort((left, right) => {
-          const leftRank = left.rarity === 'SSR' ? 0 : 1
-          const rightRank = right.rarity === 'SSR' ? 0 : 1
-          if (leftRank !== rightRank) {
-            return leftRank - rightRank
-          }
-          return left.name.localeCompare(right.name, 'ja')
-          }),
-      )
+      setItems(sortGiftItems(Array.isArray(itemRows) ? itemRows : []))
       setLoading(false)
     }
 

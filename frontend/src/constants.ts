@@ -1,6 +1,5 @@
-export const APP_TITLE = 'ブルーアーカイブ 絆管理マネージャー'
-export const APP_SUBTITLE = '軽量なローカル完結の絆管理UX'
-export const SHELL_HEADING = 'Blue Archive Bond Manager'
+export const APP_TITLE = 'Blue Archive kizunaManager'
+export const SHELL_HEADING = 'BlueArchive kizunaManager'
 export const SHELL_SUBTITLE = '検索から管理、最適化までをひとつの画面でつなぐデスクトップツール'
 
 export const NAV_ITEMS = [

@@ -1,4 +1,4 @@
-import fsSync from 'node:fs'
+﻿import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -20,6 +20,12 @@ import {
 import type { Database } from './database.ts'
 
 export type ProgressCallback = (message: string, current: number, total: number) => void
+
+const BOUQUET_NAME_MARKER = '\u82b1\u675f'
+
+function isBouquetLikeName(value: unknown): boolean {
+  return String(value || '').includes(BOUQUET_NAME_MARKER)
+}
 
 type CacheMeta = {
   fetched_at?: string
@@ -139,11 +145,15 @@ function normalizeItem(record: Record<string, unknown>): Record<string, unknown>
     return null
   }
 
+  const itemName = String(name)
   let giftKind = String(record.gift_kind ?? '').toLowerCase()
   if (!giftKind) {
     const rarity = String(record.Rarity ?? record.rarity ?? '').toLowerCase()
     const category = String(record.Category ?? record.category ?? '').toLowerCase()
     giftKind = rarity === 'bouquet' || category === 'bouquet' ? 'bouquet' : 'gift'
+  }
+  if (isBouquetLikeName(itemName)) {
+    giftKind = 'bouquet'
   }
 
   const iconName = String(record.Icon ?? record.icon_name ?? '')
@@ -153,7 +163,7 @@ function normalizeItem(record: Record<string, unknown>): Record<string, unknown>
 
   return {
     id: Number(itemId),
-    name: String(name),
+    name: itemName,
     tags: Array.isArray(record.Tags ?? record.tags)
       ? [...((record.Tags ?? record.tags) as unknown[])]
       : [],
@@ -469,3 +479,4 @@ export async function updateMasterDataWithIcons(
     icons: iconResult,
   }
 }
+

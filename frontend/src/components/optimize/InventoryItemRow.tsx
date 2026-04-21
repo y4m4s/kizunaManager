@@ -9,18 +9,21 @@ type InventoryItemRowProps = {
   onQuantityCommit: (itemId: number) => void
 }
 
+function isBouquetItem(item: Pick<Item, 'gift_kind' | 'name'>): boolean {
+  return item.gift_kind === 'bouquet' || item.name.includes('\u82b1\u675f')
+}
+
 function InventoryItemRowComponent({
   item,
   quantityInput,
   onQuantityChange,
   onQuantityCommit,
 }: InventoryItemRowProps) {
-  const toneClass =
-    item.gift_kind === 'bouquet'
-      ? 'bouquet'
-      : item.rarity === 'SSR'
-        ? 'rarity-ssr'
-        : 'rarity-sr'
+  const toneClass = isBouquetItem(item)
+    ? 'bouquet'
+    : item.rarity === 'SSR'
+      ? 'rarity-ssr'
+      : 'rarity-sr'
 
   return (
     <div className="inventory-tile-card" title={item.name}>
