@@ -1,4 +1,4 @@
-export interface StudentRecord {
+﻿export interface StudentRecord {
   id: number
   name: string
   school: string
@@ -80,15 +80,18 @@ export interface AllocationRecord {
 }
 
 export interface OptimizeStudentResult {
+  id: number
   student_id: number
   student_name: string
   birthday: string
   days_until_birthday: number
   priority: string
+  notes: string
   current_bond_level: number
   current_bond_exp: number
   target_bond_level: number
   required_exp: number
+  progress: number
   passive_exp: number
   allocated_exp: number
   remaining_exp: number
@@ -132,3 +135,5 @@ export interface TaskSnapshot {
   result?: Record<string, unknown>
   error?: string
 }
+
+

@@ -1,4 +1,4 @@
-import { assetUrl } from '../../api'
+﻿import { assetUrl } from '../../api'
 import { OPTIMIZE_PRIORITY_OPTIONS } from '../../constants'
 import { formatNumber } from '../../lib/bond'
 import { effectIconUrl, SELECTABLE_BOX_ICON_URL } from '../../lib/uiAssets'
@@ -8,8 +8,7 @@ import { IconThumb } from '../common/IconThumb'
 type OptimizeResultsTableProps = {
   fallbackItemsById: Record<number, Item>
   onPriorityChange: (
-    studentId: number,
-    targetBondLevel: number,
+    row: OptimizeResult['results'][number],
     priority: PriorityKey,
   ) => void
   prioritySavingStudentId: number | null
@@ -108,13 +107,7 @@ export function OptimizeResultsTable({
                   className="select-input compact opt-priority-select"
                   disabled={prioritySavingStudentId === row.student_id}
                   value={row.priority}
-                  onChange={(event) =>
-                    onPriorityChange(
-                      row.student_id,
-                      row.target_bond_level,
-                      event.target.value as PriorityKey,
-                    )
-                  }
+                  onChange={(event) => onPriorityChange(row, event.target.value as PriorityKey)}
                 >
                   {OPTIMIZE_PRIORITY_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>

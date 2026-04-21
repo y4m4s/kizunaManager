@@ -1,4 +1,4 @@
-export interface Student {
+﻿export interface Student {
   id: number
   name: string
   school: string
@@ -78,15 +78,18 @@ export interface MasterStatus {
 export interface OptimizeResult {
   strategy: string
   results: Array<{
+    id: number
     student_id: number
     student_name: string
     birthday: string
     days_until_birthday: number
     priority: PriorityKey
+    notes: string
     current_bond_level: number
     current_bond_exp?: number
     target_bond_level: number
     required_exp: number
+    progress: number
     passive_exp: number
     allocated_exp: number
     remaining_exp: number
@@ -138,3 +141,5 @@ export interface TaskSnapshot {
   result?: Record<string, unknown>
   error?: string
 }
+
+

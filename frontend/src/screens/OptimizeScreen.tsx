@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState } from 'react'
+﻿import { startTransition, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { OPTIMIZE_STRATEGIES, PRIORITY_SORT_ORDER } from '../constants'
 import type { Item, OptimizeResult, PriorityKey, Student } from '../types'
@@ -181,7 +181,7 @@ export function OptimizeScreen({
     const raw = itemInputsRef.current[itemId] ?? '0'
     const quantity = Number.parseInt(raw || '0', 10)
     if (Number.isNaN(quantity) || quantity < 0) {
-      window.alert('所持数は0以上の整数で入力してください。')
+      window.alert('数量は0以上の整数で入力してください。')
       const fallback = String(itemsRef.current.find((item) => item.id === itemId)?.quantity ?? 0)
       updateItemInputs((current) => ({ ...current, [itemId]: fallback }))
       return
@@ -309,23 +309,28 @@ export function OptimizeScreen({
   }
 
   async function handleResultPriorityChange(
-    studentId: number,
-    targetBondLevel: number,
+    row: OptimizeResult['results'][number],
     priority: PriorityKey,
   ) {
-    const previousPriority = result?.results.find((row) => row.student_id === studentId)?.priority
+    const previousPriority = row.priority
     if (!previousPriority || previousPriority === priority) {
       return
     }
 
-    patchResultPriority(studentId, priority)
-    setPrioritySavingStudentId(studentId)
+    patchResultPriority(row.student_id, priority)
+    setPrioritySavingStudentId(row.student_id)
     try {
-      await api.save_plan(studentId, targetBondLevel, priority, '', null)
+      await api.save_plan(
+        row.student_id,
+        row.target_bond_level,
+        priority,
+        row.notes || '',
+        row.id,
+      )
       onDataChanged()
       await runOptimization()
     } catch (error) {
-      patchResultPriority(studentId, previousPriority)
+      patchResultPriority(row.student_id, previousPriority)
       const message = error instanceof Error ? error.message : String(error)
       window.alert(`優先度の更新に失敗しました: ${message}`)
     } finally {
@@ -383,8 +388,7 @@ export function OptimizeScreen({
         </div>
 
         <p className="optimize-settings-note">
-          カフェタップは絆+15、スケジュールは Rank 12 想定で通常+25、25%で Bonus+25
-          が乗る前提の期待値で計算します。
+          カフェタップは1回あたり15、スケジュールは Rank 12 想定で通常+25、25%でボーナス+25 の期待値で計算します。
         </p>
       </section>
 
@@ -392,7 +396,7 @@ export function OptimizeScreen({
         <div className="toolbar-row">
           <div className="optimize-run-copy">
             <h3>最適化</h3>
-            <p className="helper-text">登録済みの優先対象に、在庫を相性順で配分します。</p>
+            <p className="helper-text">在庫と優先度をもとに、相性と代替性を見ながら配分します。</p>
           </div>
           <div className="toolbar-actions">
             <select
@@ -420,8 +424,8 @@ export function OptimizeScreen({
 
       <OptimizeResultsTable
         fallbackItemsById={Object.fromEntries(items.map((item) => [item.id, item]))}
-        onPriorityChange={(studentId, targetBondLevel, priority) =>
-          void handleResultPriorityChange(studentId, targetBondLevel, priority)
+        onPriorityChange={(row, priority) =>
+          void handleResultPriorityChange(row, priority)
         }
         prioritySavingStudentId={prioritySavingStudentId}
         result={result}
@@ -430,3 +434,4 @@ export function OptimizeScreen({
     </div>
   )
 }
+
