@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import { api, pollTask, waitForBackendReady } from './api'
 import { ProgressModal } from './components/common/ProgressModal'
+import { Toast } from './components/common/Toast'
 import { Sidebar } from './components/layout/Sidebar'
 import { ManageScreen } from './screens/ManageScreen'
 import { OptimizeScreen } from './screens/OptimizeScreen'
@@ -33,6 +34,7 @@ function App() {
   const [refreshToken, setRefreshToken] = useState(0)
   const [progress, setProgress] = useState<ProgressState>(INITIAL_PROGRESS)
   const [notice, setNotice] = useState('')
+  const dismissNotice = useCallback(() => setNotice(''), [])
 
   useEffect(() => {
     let disposed = false
@@ -176,12 +178,12 @@ function App() {
 
         <div className="content">
           <main className="main">
-            {notice ? <div className="notice-banner">{notice}</div> : null}
             {renderScreen()}
           </main>
         </div>
       </div>
 
+      <Toast message={notice} onClose={dismissNotice} open={Boolean(notice)} />
       <ProgressModal
         current={progress.current}
         message={progress.message}

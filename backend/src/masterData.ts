@@ -44,6 +44,13 @@ async function loadJson<T>(filePath: string): Promise<T> {
   return JSON.parse(await fs.readFile(filePath, 'utf-8')) as T
 }
 
+function isMissingFileError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) {
+    return false
+  }
+  return String((error as { code?: unknown }).code) === 'ENOENT'
+}
+
 async function saveJson(filePath: string, payload: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf-8')
@@ -303,6 +310,15 @@ export async function ensureBootstrapData(database: Database): Promise<string> {
     return database.getMeta('master_source') || 'database'
   }
 
+  try {
+    return await syncCacheToDatabase(database)
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      throw error
+    }
+  }
+
+  await downloadMasterData()
   return syncCacheToDatabase(database)
 }
 

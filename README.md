@@ -31,6 +31,8 @@ cd ..
 npm run dev
 ```
 
+初回起動時に DB とキャッシュ JSON が無い場合は、Schale DB からマスターデータを自動取得します。
+
 起動先:
 
 - Backend API: `http://127.0.0.1:8787`

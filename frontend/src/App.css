@@ -226,13 +226,50 @@
   padding: 8px 12px;
 }
 
-.notice-banner {
+.toast-viewport {
+  display: flex;
+  justify-content: center;
+  left: 50%;
+  pointer-events: none;
+  position: fixed;
+  top: 18px;
+  transform: translateX(-50%);
+  width: min(460px, calc(100vw - 32px));
+  z-index: 1200;
+}
+
+.toast-card {
   background: #fff5d8;
   border: 1px solid #f2d48a;
-  border-radius: 14px;
+  border-radius: 8px;
+  box-shadow: 0 16px 38px rgba(70, 52, 10, 0.18);
   color: #7b5a14;
-  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  opacity: 1;
   padding: 12px 14px;
+  transform: translateY(0);
+  animation: toast-life 2920ms ease forwards;
+  width: 100%;
+}
+
+@keyframes toast-life {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  8%,
+  89% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
 }
 
 .pill-tabs {
