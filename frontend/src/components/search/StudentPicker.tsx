@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef, useState } from 'react'
 import { GIFT_PLACEHOLDER } from '../../constants'
 import type { Student } from '../../types'
 
@@ -8,7 +9,7 @@ type StudentPickerProps = {
   onAddStudent: (student: Student) => void
   onQueryChange: (value: string) => void
   onRemoveStudent: (studentId: number) => void
-  onSubmit: () => void
+  onSubmit: (student?: Student) => void
 }
 
 export function StudentPicker({
@@ -20,6 +21,30 @@ export function StudentPicker({
   onRemoveStudent,
   onSubmit,
 }: StudentPickerProps) {
+  const listId = useId()
+  const optionRefs = useRef<Record<number, HTMLButtonElement | null>>({})
+  const [activeStudentId, setActiveStudentId] = useState<number | null>(null)
+  const activeIndex =
+    suggestions.findIndex((student) => student.id === activeStudentId) >= 0
+      ? suggestions.findIndex((student) => student.id === activeStudentId)
+      : 0
+  const activeStudent = suggestions[activeIndex]
+
+  useEffect(() => {
+    if (!activeStudent) {
+      return
+    }
+    optionRefs.current[activeStudent.id]?.scrollIntoView({ block: 'nearest' })
+  }, [activeStudent])
+
+  function moveActiveSuggestion(direction: 1 | -1) {
+    if (!suggestions.length) {
+      return
+    }
+    const nextIndex = (activeIndex + direction + suggestions.length) % suggestions.length
+    setActiveStudentId(suggestions[nextIndex].id)
+  }
+
   return (
     <section className="card-shell search-section">
       <div className="section-head">
@@ -32,37 +57,61 @@ export function StudentPicker({
       <div className="picker-block">
         <div className="inline-form">
           <input
+            aria-activedescendant={activeStudent ? `${listId}-${activeStudent.id}` : undefined}
+            aria-controls={query.trim() ? listId : undefined}
+            aria-expanded={Boolean(query.trim() && suggestions.length)}
+            aria-autocomplete="list"
             className="text-input"
             placeholder={GIFT_PLACEHOLDER}
+            role="combobox"
             type="text"
             value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
+            onChange={(event) => {
+              setActiveStudentId(null)
+              onQueryChange(event.target.value)
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault()
-                onSubmit()
+                onSubmit(activeStudent)
+              } else if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                moveActiveSuggestion(1)
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                moveActiveSuggestion(-1)
               }
             }}
           />
-          <button className="btn" type="button" onClick={onSubmit}>
+          <button className="btn" type="button" onClick={() => onSubmit(activeStudent)}>
             追加
           </button>
         </div>
 
         {query.trim() ? (
-          <div className="candidate-list">
+          <div id={listId} className="candidate-list" role="listbox">
             {suggestions.length ? (
-              suggestions.map((student) => (
-                <button
-                  key={student.id}
-                  className="candidate-item"
-                  type="button"
-                  onClick={() => onAddStudent(student)}
-                >
-                  <span>{student.name}</span>
-                  <small>{student.school || 'その他'}</small>
-                </button>
-              ))
+              suggestions.map((student, index) => {
+                const active = index === activeIndex
+                return (
+                  <button
+                    id={`${listId}-${student.id}`}
+                    key={student.id}
+                    ref={(element) => {
+                      optionRefs.current[student.id] = element
+                    }}
+                    aria-selected={active}
+                    className={`candidate-item ${active ? 'active' : ''}`}
+                    role="option"
+                    type="button"
+                    onClick={() => onAddStudent(student)}
+                    onMouseEnter={() => setActiveStudentId(student.id)}
+                  >
+                    <span>{student.name}</span>
+                    <small>{student.school || 'その他'}</small>
+                  </button>
+                )
+              })
             ) : (
               <p className="helper-text">一致する生徒が見つかりません。</p>
             )}

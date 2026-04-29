@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useRef, useState } from 'react'
+import { startTransition, useDeferredValue, useEffect, useId, useRef, useState } from 'react'
 import { api } from '../api'
 import { PRIORITY_LABELS, PRIORITY_SORT_ORDER } from '../constants'
 import { calcRequiredExp, clampLevel, formatNumber } from '../lib/bond'
@@ -39,10 +39,13 @@ export function ManageScreen({
   const [loading, setLoading] = useState(true)
 
   const deferredAddQuery = useDeferredValue(addQuery)
+  const candidateListId = useId()
   const studentsRef = useRef<Student[]>([])
   const plansRef = useRef<Plan[]>([])
   const draftsRef = useRef<Record<number, ManageDraft>>({})
   const saveQueueRef = useRef<Record<number, Promise<void>>>({})
+  const candidateRefs = useRef<Record<number, HTMLButtonElement | null>>({})
+  const [activeCandidateId, setActiveCandidateId] = useState<number | null>(null)
 
   function plansByStudentFrom(rows: Plan[]): Record<number, Plan> {
     return Object.fromEntries(rows.map((plan) => [plan.student_id, plan])) as Record<number, Plan>
@@ -166,6 +169,18 @@ export function ManageScreen({
         : true,
     )
     .slice(0, 20)
+  const activeCandidateIndex =
+    candidateStudents.findIndex((student) => student.id === activeCandidateId) >= 0
+      ? candidateStudents.findIndex((student) => student.id === activeCandidateId)
+      : 0
+  const activeCandidate = candidateStudents[activeCandidateIndex]
+
+  useEffect(() => {
+    if (!activeCandidate) {
+      return
+    }
+    candidateRefs.current[activeCandidate.id]?.scrollIntoView({ block: 'nearest' })
+  }, [activeCandidate])
 
   const summary = managedStudents.reduce(
     (acc, student) => {
@@ -347,9 +362,18 @@ export function ManageScreen({
     queueRowSave(studentId, draft)
   }
 
-  async function addStudent() {
+  function moveActiveCandidate(direction: 1 | -1) {
+    if (!candidateStudents.length) {
+      return
+    }
+    const nextIndex =
+      (activeCandidateIndex + direction + candidateStudents.length) % candidateStudents.length
+    setActiveCandidateId(candidateStudents[nextIndex].id)
+  }
+
+  async function addStudent(selectedStudent?: Student) {
     const lowered = addQuery.trim().toLowerCase()
-    const matched = candidateStudents.find(
+    const matched = selectedStudent ?? candidateStudents.find(
       (student) => student.name.toLowerCase() === lowered,
     ) ?? candidateStudents[0]
     if (!matched) {
@@ -358,6 +382,7 @@ export function ManageScreen({
     }
     await api.upsert_user_student(matched.id, 1, 0, '')
     setAddQuery('')
+    setActiveCandidateId(null)
     onDataChanged()
   }
 
@@ -389,15 +414,31 @@ export function ManageScreen({
       <section className="card-shell">
         <div className="inline-form">
           <input
+            aria-activedescendant={
+              activeCandidate ? `${candidateListId}-${activeCandidate.id}` : undefined
+            }
+            aria-controls={addQuery.trim() ? candidateListId : undefined}
+            aria-expanded={Boolean(addQuery.trim() && candidateStudents.length)}
+            aria-autocomplete="list"
             className="text-input"
             placeholder="生徒名で管理対象に追加"
+            role="combobox"
             type="text"
             value={addQuery}
-            onChange={(event) => setAddQuery(event.target.value)}
+            onChange={(event) => {
+              setActiveCandidateId(null)
+              setAddQuery(event.target.value)
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault()
-                void addStudent()
+                void addStudent(activeCandidate)
+              } else if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                moveActiveCandidate(1)
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                moveActiveCandidate(-1)
               }
             }}
           />
@@ -407,22 +448,31 @@ export function ManageScreen({
         </div>
 
         {addQuery.trim() ? (
-          <div className="candidate-list manage-candidates">
+          <div id={candidateListId} className="candidate-list manage-candidates" role="listbox">
             {candidateStudents.length ? (
-              candidateStudents.map((student) => (
-                <button
-                  key={student.id}
-                  className="candidate-item"
-                  type="button"
-                  onClick={() => {
-                    void api.upsert_user_student(student.id, 1, 0, '').then(onDataChanged)
-                    setAddQuery('')
-                  }}
-                >
-                  <span>{student.name}</span>
-                  <small>{student.school || 'その他'}</small>
-                </button>
-              ))
+              candidateStudents.map((student, index) => {
+                const active = index === activeCandidateIndex
+                return (
+                  <button
+                    id={`${candidateListId}-${student.id}`}
+                    key={student.id}
+                    ref={(element) => {
+                      candidateRefs.current[student.id] = element
+                    }}
+                    aria-selected={active}
+                    className={`candidate-item ${active ? 'active' : ''}`}
+                    role="option"
+                    type="button"
+                    onClick={() => {
+                      void addStudent(student)
+                    }}
+                    onMouseEnter={() => setActiveCandidateId(student.id)}
+                  >
+                    <span>{student.name}</span>
+                    <small>{student.school || 'その他'}</small>
+                  </button>
+                )
+              })
             ) : (
               <p className="helper-text">追加できる候補が見つかりません。</p>
             )}

@@ -4,12 +4,14 @@ import { api, pollTask, waitForBackendReady } from './api'
 import { ProgressModal } from './components/common/ProgressModal'
 import { Toast } from './components/common/Toast'
 import { Sidebar } from './components/layout/Sidebar'
+import { NAV_ITEMS } from './constants'
+import { GiftManagementScreen } from './screens/GiftManagementScreen'
 import { ManageScreen } from './screens/ManageScreen'
 import { OptimizeScreen } from './screens/OptimizeScreen'
 import { SearchScreen } from './screens/SearchScreen'
 import type { MasterStatus } from './types'
 
-type Tab = 'search' | 'manage' | 'optimize'
+type Tab = (typeof NAV_ITEMS)[number]['key']
 
 type ProgressState = {
   current: number
@@ -157,6 +159,10 @@ function App() {
       )
     }
 
+    if (activeTab === 'giftManage') {
+      return <GiftManagementScreen bridgeReady={backendReady} refreshToken={refreshToken} />
+    }
+
     return <SearchScreen bridgeReady={backendReady} refreshToken={refreshToken} />
   }
 
@@ -177,7 +183,7 @@ function App() {
         />
 
         <div className="content">
-          <main className="main">
+          <main className={`main ${activeTab === 'giftManage' ? 'main-compact' : ''}`}>
             {renderScreen()}
           </main>
         </div>

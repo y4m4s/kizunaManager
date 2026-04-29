@@ -154,6 +154,10 @@
   padding: 20px;
 }
 
+.main-compact {
+  padding: clamp(12px, 1.6vh, 16px);
+}
+
 /* Placeholder */
 
 .placeholder {
@@ -390,6 +394,21 @@
   justify-content: space-between;
   padding: 12px 14px;
   text-align: left;
+}
+
+.candidate-item.active,
+.candidate-item[aria-selected="true"] {
+  background: #e8f1ff;
+  box-shadow: inset 3px 0 0 #3b82f6;
+}
+
+.candidate-item.active span,
+.candidate-item[aria-selected="true"] span {
+  color: #1d4ed8;
+}
+
+.candidate-item:hover {
+  background: #edf5ff;
 }
 
 .candidate-item:last-child {
@@ -742,6 +761,67 @@
   color: #6f83a0;
   font-size: 11px;
   line-height: 1.2;
+}
+
+.gift-management-screen .card-shell {
+  padding: clamp(12px, 1.6vh, 16px);
+}
+
+.gift-management-screen .search-section {
+  gap: clamp(10px, 1.3vh, 12px);
+}
+
+.gift-management-screen .section-head h3 {
+  font-size: 17px;
+  margin-bottom: 3px;
+}
+
+.gift-management-screen .section-head p {
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.gift-management-screen .inventory-grid {
+  gap: clamp(8px, 1.1vh, 10px);
+}
+
+.gift-management-screen .inventory-tile-card,
+.gift-management-screen .inventory-box-tile-card {
+  gap: 6px;
+}
+
+.gift-management-screen .inventory-tile,
+.gift-management-screen .inventory-box-tile {
+  border-radius: 14px;
+  height: clamp(64px, 8.4vh, 76px);
+  padding: 7px;
+}
+
+.gift-management-screen .inventory-tile .icon-thumb,
+.gift-management-screen .inventory-box-icon {
+  height: clamp(48px, 6.2vh, 56px);
+  max-height: clamp(48px, 6.2vh, 56px);
+  max-width: clamp(48px, 6.2vh, 56px);
+  width: clamp(48px, 6.2vh, 56px);
+}
+
+.gift-management-screen .inventory-box-tile {
+  gap: 10px;
+  padding-inline: 12px;
+}
+
+.gift-management-screen .inventory-box-tile strong {
+  font-size: 13px;
+}
+
+.gift-management-screen .inventory-box-tile small {
+  font-size: 10.5px;
+}
+
+.gift-management-screen .inventory-tile-input {
+  font-size: 12px;
+  height: 30px;
+  padding: 0 6px;
 }
 
 .card-panel {
@@ -1226,6 +1306,12 @@
 
   .inventory-grid {
     grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 841px) and (max-width: 1120px) {
+  .gift-management-screen .inventory-grid {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
   }
 }
 

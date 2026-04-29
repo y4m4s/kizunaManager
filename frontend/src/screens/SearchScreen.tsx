@@ -136,9 +136,9 @@ export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
     setStudentQuery('')
   }
 
-  function submitStudent() {
+  function submitStudent(activeStudent?: Student) {
     const lowered = studentQuery.trim().toLowerCase()
-    const matched = candidateStudents.find(
+    const matched = activeStudent ?? candidateStudents.find(
       (student) => student.name.toLowerCase() === lowered,
     ) ?? candidateStudents[0]
     if (!matched) {
