@@ -621,7 +621,8 @@ export class Database {
     notes = '',
     planId: number | null = null,
   ): number {
-    let resolvedPlanId = planId
+    let resolvedPlanId =
+      planId !== null && Number.isFinite(planId) && planId > 0 ? planId : null
     if (resolvedPlanId === null) {
       const existing = this.get<{ id: number }>(
         'SELECT id FROM user_plans WHERE student_id = ? ORDER BY id LIMIT 1',

@@ -452,12 +452,17 @@ async function handleApiRequest(
       notes?: string
       plan_id?: number | null
     }>(request)
+    const requestedPlanId = body.plan_id == null ? null : Number(body.plan_id)
+    const normalizedPlanId =
+      requestedPlanId !== null && Number.isFinite(requestedPlanId) && requestedPlanId > 0
+        ? requestedPlanId
+        : null
     const planId = database.savePlan(
       Number(body.student_id),
       Number(body.target_bond_level),
       String(body.priority || 'priority'),
       String(body.notes || ''),
-      body.plan_id === undefined ? null : Number(body.plan_id),
+      normalizedPlanId,
     )
     sendJson(response, 200, { ok: true, plan_id: planId })
     return true

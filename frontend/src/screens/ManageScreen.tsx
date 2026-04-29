@@ -1,14 +1,24 @@
-import { startTransition, useDeferredValue, useEffect, useId, useRef, useState } from 'react'
+import {
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react'
 import { api } from '../api'
 import { PRIORITY_LABELS, PRIORITY_SORT_ORDER } from '../constants'
 import { calcRequiredExp, clampLevel, formatNumber } from '../lib/bond'
 import type { Plan, PriorityKey, Student } from '../types'
 import { ConfirmModal } from '../components/common/ConfirmModal'
+import type { ToastKind } from '../components/common/Toast'
 import { ManageRow } from '../components/manage/ManageRow'
 
 type ManageScreenProps = {
   bridgeReady: boolean
   onDataChanged: () => void
+  onToast: (message: string, kind?: ToastKind, duration?: number | null) => void
   refreshToken: number
 }
 
@@ -17,6 +27,8 @@ type ManageDraft = {
   targetLevel: string
   priority: PriorityKey
 }
+
+const SAVE_DEBOUNCE_MS = 700
 
 function defaultDraft(student: Student, plan?: Plan): ManageDraft {
   return {
@@ -29,6 +41,7 @@ function defaultDraft(student: Student, plan?: Plan): ManageDraft {
 export function ManageScreen({
   bridgeReady,
   onDataChanged,
+  onToast,
   refreshToken,
 }: ManageScreenProps) {
   const [students, setStudents] = useState<Student[]>([])
@@ -45,6 +58,11 @@ export function ManageScreen({
   const draftsRef = useRef<Record<number, ManageDraft>>({})
   const saveQueueRef = useRef<Record<number, Promise<void>>>({})
   const candidateRefs = useRef<Record<number, HTMLButtonElement | null>>({})
+  const saveTimersRef = useRef<Record<number, ReturnType<typeof window.setTimeout>>>({})
+  const dirtyStudentIdsRef = useRef<Set<number>>(new Set())
+  const draftVersionRef = useRef<Record<number, number>>({})
+  const pendingSaveCountRef = useRef(0)
+  const saveFailureMessageRef = useRef<string | null>(null)
   const [activeCandidateId, setActiveCandidateId] = useState<number | null>(null)
 
   function plansByStudentFrom(rows: Plan[]): Record<number, Plan> {
@@ -90,6 +108,67 @@ export function ManageScreen({
     setDrafts(nextDrafts)
   }
 
+  function nextDraftVersion(studentId: number): number {
+    const nextVersion = (draftVersionRef.current[studentId] ?? 0) + 1
+    draftVersionRef.current[studentId] = nextVersion
+    dirtyStudentIdsRef.current.add(studentId)
+    return nextVersion
+  }
+
+  function clearSaveTimer(studentId: number) {
+    const timer = saveTimersRef.current[studentId]
+    if (timer) {
+      window.clearTimeout(timer)
+      delete saveTimersRef.current[studentId]
+    }
+  }
+
+  function validateDraft(draft: ManageDraft, silent = false): boolean {
+    const currentLevel = parseInt(draft.currentLevel, 10)
+    if (Number.isNaN(currentLevel)) {
+      if (!silent) {
+        window.alert('現在の絆は数字で入力してください。')
+      }
+      return false
+    }
+
+    if (draft.targetLevel.trim()) {
+      const targetLevel = parseInt(draft.targetLevel, 10)
+      if (Number.isNaN(targetLevel)) {
+        if (!silent) {
+          window.alert('目標は数字で入力してください。')
+        }
+        return false
+      }
+    }
+
+    return true
+  }
+
+  function showSavingToast() {
+    if (pendingSaveCountRef.current === 0) {
+      saveFailureMessageRef.current = null
+    }
+    pendingSaveCountRef.current += 1
+    onToast('保存しています……', 'saving', null)
+  }
+
+  function settleSavingToast(success: boolean, message?: string) {
+    if (!success) {
+      saveFailureMessageRef.current = message ?? '保存に失敗しました'
+    }
+    pendingSaveCountRef.current = Math.max(0, pendingSaveCountRef.current - 1)
+    if (pendingSaveCountRef.current > 0) {
+      return
+    }
+    if (saveFailureMessageRef.current) {
+      onToast(saveFailureMessageRef.current, 'error')
+      saveFailureMessageRef.current = null
+      return
+    }
+    onToast('保存しました', 'success')
+  }
+
   useEffect(() => {
     let disposed = false
 
@@ -112,12 +191,18 @@ export function ManageScreen({
       const plansByStudent = Object.fromEntries(
         nextPlans.map((plan) => [plan.student_id, plan]),
       ) as Record<number, Plan>
-      const nextDrafts = Object.fromEntries(
+      const loadedDrafts = Object.fromEntries(
         nextStudents.map((student) => [
           student.id,
           defaultDraft(student, plansByStudent[student.id]),
         ]),
-      )
+      ) as Record<number, ManageDraft>
+      const nextDrafts = { ...loadedDrafts }
+      for (const studentId of dirtyStudentIdsRef.current) {
+        if (draftsRef.current[studentId]) {
+          nextDrafts[studentId] = draftsRef.current[studentId]
+        }
+      }
 
       replaceStudents(nextStudents)
       replacePlans(nextPlans)
@@ -131,6 +216,13 @@ export function ManageScreen({
       disposed = true
     }
   }, [bridgeReady, refreshToken])
+
+  useEffect(() => {
+    return () => {
+      Object.values(saveTimersRef.current).forEach((timer) => window.clearTimeout(timer))
+      saveTimersRef.current = {}
+    }
+  }, [])
 
   const plansByStudent = Object.fromEntries(
     plans.map((plan) => [plan.student_id, plan]),
@@ -230,7 +322,7 @@ export function ManageScreen({
     return { ...baseDraft, ...patch }
   }
 
-  async function persistRow(studentId: number, draft: ManageDraft) {
+  async function persistRow(studentId: number, draft: ManageDraft, draftVersion: number) {
     const student = studentsRef.current.find((row) => row.id === studentId)
     if (!student) {
       return
@@ -300,35 +392,43 @@ export function ManageScreen({
       ])
     }
 
-    updateDrafts((current) => ({
-      ...current,
-      [studentId]: {
-        currentLevel: String(normalizedCurrent),
-        targetLevel: nextTargetLevel === null ? '' : String(nextTargetLevel),
-        priority: draft.priority,
-      },
-    }))
+    if ((draftVersionRef.current[studentId] ?? 0) <= draftVersion) {
+      dirtyStudentIdsRef.current.delete(studentId)
+      updateDrafts((current) => ({
+        ...current,
+        [studentId]: {
+          currentLevel: String(normalizedCurrent),
+          targetLevel: nextTargetLevel === null ? '' : String(nextTargetLevel),
+          priority: draft.priority,
+        },
+      }))
+    }
   }
 
-  function queueRowSave(studentId: number, draft: ManageDraft) {
+  function queueRowSave(studentId: number, draft: ManageDraft, draftVersion: number): Promise<void> {
+    showSavingToast()
     const previous = saveQueueRef.current[studentId] ?? Promise.resolve()
     const queued = previous
       .catch(() => undefined)
       .then(async () => {
-        try {
-          await persistRow(studentId, draft)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          window.alert(`保存に失敗しました: ${message}`)
-        }
+        await persistRow(studentId, draft, draftVersion)
       })
 
     saveQueueRef.current[studentId] = queued
-    void queued.finally(() => {
-      if (saveQueueRef.current[studentId] === queued) {
-        delete saveQueueRef.current[studentId]
-      }
-    })
+    void queued
+      .then(() => {
+        settleSavingToast(true)
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        settleSavingToast(false, `保存に失敗しました: ${message}`)
+      })
+      .finally(() => {
+        if (saveQueueRef.current[studentId] === queued) {
+          delete saveQueueRef.current[studentId]
+        }
+      })
+    return queued
   }
 
   function saveRow(studentId: number, patch: Partial<ManageDraft> = {}) {
@@ -345,21 +445,68 @@ export function ManageScreen({
       }))
     }
 
-    const currentLevel = parseInt(draft.currentLevel || '1', 10)
-    if (Number.isNaN(currentLevel)) {
-      window.alert('現在の絆は数字で入力してください。')
+    if (!validateDraft(draft)) {
       return
     }
 
-    if (draft.targetLevel.trim()) {
-      const targetLevel = parseInt(draft.targetLevel, 10)
-      if (Number.isNaN(targetLevel)) {
-        window.alert('目標は数字で入力してください。')
-        return
-      }
+    clearSaveTimer(studentId)
+    const draftVersion = nextDraftVersion(studentId)
+    queueRowSave(studentId, draft, draftVersion)
+  }
+
+  function scheduleRowSave(studentId: number, draft: ManageDraft, draftVersion: number) {
+    clearSaveTimer(studentId)
+    if (!validateDraft(draft, true)) {
+      return
+    }
+    saveTimersRef.current[studentId] = window.setTimeout(() => {
+      delete saveTimersRef.current[studentId]
+      queueRowSave(studentId, draft, draftVersion)
+    }, SAVE_DEBOUNCE_MS)
+  }
+
+  function patchDraft(studentId: number, patch: Partial<ManageDraft>) {
+    const draft = resolveDraft(studentId, patch)
+    if (!draft) {
+      return
     }
 
-    queueRowSave(studentId, draft)
+    updateDrafts((current) => ({
+      ...current,
+      [studentId]: draft,
+    }))
+    const draftVersion = nextDraftVersion(studentId)
+    scheduleRowSave(studentId, draft, draftVersion)
+  }
+
+  async function saveDirtyRowsNow(showNoopToast = true): Promise<boolean> {
+    const dirtyIds = [...dirtyStudentIdsRef.current]
+    if (!dirtyIds.length) {
+      if (showNoopToast) {
+        onToast('保存しました', 'success')
+      }
+      return true
+    }
+
+    const rowsToSave: Array<{ draft: ManageDraft; studentId: number; version: number }> = []
+    for (const studentId of dirtyIds) {
+      const draft = resolveDraft(studentId)
+      if (!draft || !validateDraft(draft)) {
+        return false
+      }
+      rowsToSave.push({
+        draft,
+        studentId,
+        version: draftVersionRef.current[studentId] ?? 0,
+      })
+    }
+
+    const saves = rowsToSave.map((row) => {
+      clearSaveTimer(row.studentId)
+      return queueRowSave(row.studentId, row.draft, row.version)
+    })
+    const results = await Promise.allSettled(saves)
+    return results.every((result) => result.status === 'fulfilled')
   }
 
   function moveActiveCandidate(direction: 1 | -1) {
@@ -380,14 +527,41 @@ export function ManageScreen({
       window.alert('追加したい生徒を候補から選んでください。')
       return
     }
+    const saved = await saveDirtyRowsNow(false)
+    if (!saved) {
+      return
+    }
     await api.upsert_user_student(matched.id, 1, 0, '')
+    updateStudents((current) =>
+      current.map((student) =>
+        student.id === matched.id
+          ? {
+              ...student,
+              current_bond_exp: 0,
+              current_bond_level: 1,
+              is_owned: true,
+            }
+          : student,
+      ),
+    )
+    updateDrafts((current) => ({
+      ...current,
+      [matched.id]: {
+        currentLevel: '',
+        targetLevel: '',
+        priority: 'priority',
+      },
+    }))
     setAddQuery('')
     setActiveCandidateId(null)
-    onDataChanged()
   }
 
   async function confirmRemoveStudent() {
     if (!removeTarget) {
+      return
+    }
+    const saved = await saveDirtyRowsNow(false)
+    if (!saved) {
       return
     }
     await api.delete_user_student(removeTarget.id)
@@ -395,8 +569,15 @@ export function ManageScreen({
     onDataChanged()
   }
 
+  function handleScreenKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault()
+      void saveDirtyRowsNow()
+    }
+  }
+
   return (
-    <div className="screen-stack">
+    <div className="screen-stack" onKeyDown={handleScreenKeyDown}>
       <section className="card-shell screen-header">
         <div className="section-head">
           <div>
@@ -506,14 +687,7 @@ export function ManageScreen({
                   requiredExpText={draft.targetLevel.trim() ? formatNumber(requiredExp) : '-'}
                   student={student}
                   onChange={(patch) => {
-                    const nextDraft = resolveDraft(student.id, patch)
-                    if (!nextDraft) {
-                      return
-                    }
-                    updateDrafts((current) => ({
-                      ...current,
-                      [student.id]: nextDraft,
-                    }))
+                    patchDraft(student.id, patch)
                   }}
                   onRemove={() => setRemoveTarget(student)}
                   onSave={(patch) => saveRow(student.id, patch)}

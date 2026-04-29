@@ -198,15 +198,24 @@ export const api: RawApi = {
     return requestJson('/api/plans')
   },
   save_plan(student_id, target_bond_level, priority, notes = '', plan_id = null) {
+    const body: {
+      notes: string
+      plan_id?: number
+      priority: string
+      student_id: number
+      target_bond_level: number
+    } = {
+      student_id,
+      target_bond_level,
+      priority,
+      notes,
+    }
+    if (plan_id !== null && plan_id !== undefined) {
+      body.plan_id = plan_id
+    }
     return requestJson('/api/plans', {
       method: 'PUT',
-      body: JSON.stringify({
-        student_id,
-        target_bond_level,
-        priority,
-        notes,
-        plan_id,
-      }),
+      body: JSON.stringify(body),
     })
   },
   delete_plan(plan_id) {

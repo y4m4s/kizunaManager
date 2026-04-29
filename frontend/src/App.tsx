@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import { api, pollTask, waitForBackendReady } from './api'
 import { ProgressModal } from './components/common/ProgressModal'
-import { Toast } from './components/common/Toast'
+import { Toast, type ToastKind } from './components/common/Toast'
 import { Sidebar } from './components/layout/Sidebar'
 import { NAV_ITEMS } from './constants'
 import { GiftManagementScreen } from './screens/GiftManagementScreen'
@@ -21,6 +21,12 @@ type ProgressState = {
   total: number
 }
 
+type ToastState = {
+  duration?: number | null
+  kind: ToastKind
+  message: string
+}
+
 const INITIAL_PROGRESS: ProgressState = {
   current: 0,
   message: '',
@@ -35,8 +41,14 @@ function App() {
   const [masterStatus, setMasterStatus] = useState<MasterStatus | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
   const [progress, setProgress] = useState<ProgressState>(INITIAL_PROGRESS)
-  const [notice, setNotice] = useState('')
-  const dismissNotice = useCallback(() => setNotice(''), [])
+  const [toast, setToast] = useState<ToastState>({ kind: 'info', message: '' })
+  const setNotice = useCallback(
+    (message: string, kind: ToastKind = 'info', duration?: number | null) => {
+      setToast({ duration, kind, message })
+    },
+    [],
+  )
+  const dismissNotice = useCallback(() => setToast({ kind: 'info', message: '' }), [])
 
   useEffect(() => {
     let disposed = false
@@ -61,7 +73,7 @@ function App() {
     return () => {
       disposed = true
     }
-  }, [])
+  }, [setNotice])
 
   useEffect(() => {
     let disposed = false
@@ -87,7 +99,7 @@ function App() {
     return () => {
       disposed = true
     }
-  }, [backendReady, refreshToken])
+  }, [backendReady, refreshToken, setNotice])
 
   async function runTask(
     title: string,
@@ -145,6 +157,7 @@ function App() {
           bridgeReady={backendReady}
           refreshToken={refreshToken}
           onDataChanged={() => setRefreshToken((current) => current + 1)}
+          onToast={setNotice}
         />
       )
     }
@@ -189,7 +202,13 @@ function App() {
         </div>
       </div>
 
-      <Toast message={notice} onClose={dismissNotice} open={Boolean(notice)} />
+      <Toast
+        duration={toast.duration}
+        kind={toast.kind}
+        message={toast.message}
+        onClose={dismissNotice}
+        open={Boolean(toast.message)}
+      />
       <ProgressModal
         current={progress.current}
         message={progress.message}
