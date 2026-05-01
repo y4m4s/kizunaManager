@@ -539,24 +539,45 @@
   gap: 10px;
 }
 
-.student-search-actions {
+.student-search-form {
+  align-items: center;
   display: flex;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.student-search-form .text-input {
-  flex: 0 1 440px;
-  max-width: 440px;
-  min-height: 48px;
+.student-search-primary {
+  align-items: center;
+  display: flex;
+  flex: 1 1 300px;
+  gap: 8px;
+  min-width: 0;
 }
 
-.student-search-actions .btn {
+.student-search-primary .text-input {
+  flex: 1;
+  min-height: 40px;
+  min-width: 0;
+}
+
+.student-search-primary .btn,
+.student-search-secondary .btn {
+  flex: 0 0 auto;
   font-size: 14px;
   font-weight: 700;
-  min-height: 48px;
-  min-width: 104px;
-  padding-inline: 20px;
+  min-height: 44px;
+  min-width: 80px;
+  white-space: nowrap;
+}
+
+.student-search-secondary {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.student-search-secondary .btn {
+  color: #566d88;
 }
 
 .text-input,
@@ -1648,18 +1669,21 @@
     width: 100%;
   }
 
-  .student-search-form .text-input {
-    flex-basis: auto;
-    max-width: none;
+  .student-search-form {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .student-search-actions {
+  .student-search-primary {
+    flex: none;
+  }
+
+  .student-search-secondary {
     width: 100%;
   }
 
-  .inline-form .student-search-actions .btn {
+  .student-search-secondary .btn {
     flex: 1 1 0;
-    width: auto;
   }
 
   .results-shell {

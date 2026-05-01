@@ -29,7 +29,7 @@ export function GiftPicker({ items, selectedIds, onToggle }: GiftPickerProps) {
       </div>
 
       <div className="gift-grid">
-        {items.map((item) => {
+        {items.filter((item) => !isBouquetItem(item)).map((item) => {
           const selected = selectedIds.includes(item.id)
           return (
             <button

@@ -59,38 +59,40 @@ export function StudentPicker({
       </div>
 
       <div className="picker-block">
-        <div className="inline-form student-search-form">
-          <input
-            aria-activedescendant={activeStudent ? `${listId}-${activeStudent.id}` : undefined}
-            aria-controls={query.trim() ? listId : undefined}
-            aria-expanded={Boolean(query.trim() && suggestions.length)}
-            aria-autocomplete="list"
-            className="text-input"
-            placeholder={GIFT_PLACEHOLDER}
-            role="combobox"
-            type="text"
-            value={query}
-            onChange={(event) => {
-              setActiveStudentId(null)
-              onQueryChange(event.target.value)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                onSubmit(activeStudent)
-              } else if (event.key === 'ArrowDown') {
-                event.preventDefault()
-                moveActiveSuggestion(1)
-              } else if (event.key === 'ArrowUp') {
-                event.preventDefault()
-                moveActiveSuggestion(-1)
-              }
-            }}
-          />
-          <div className="student-search-actions">
+        <div className="student-search-form">
+          <div className="student-search-primary">
+            <input
+              aria-activedescendant={activeStudent ? `${listId}-${activeStudent.id}` : undefined}
+              aria-controls={query.trim() ? listId : undefined}
+              aria-expanded={Boolean(query.trim() && suggestions.length)}
+              aria-autocomplete="list"
+              className="text-input"
+              placeholder={GIFT_PLACEHOLDER}
+              role="combobox"
+              type="text"
+              value={query}
+              onChange={(event) => {
+                setActiveStudentId(null)
+                onQueryChange(event.target.value)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  onSubmit(activeStudent)
+                } else if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  moveActiveSuggestion(1)
+                } else if (event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  moveActiveSuggestion(-1)
+                }
+              }}
+            />
             <button className="btn btn-primary" type="button" onClick={() => onSubmit(activeStudent)}>
               追加
             </button>
+          </div>
+          <div className="student-search-secondary">
             <button className="btn" type="button" onClick={onClear}>
               クリア
             </button>
