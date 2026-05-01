@@ -189,6 +189,85 @@
     linear-gradient(180deg, #ffffff, #f8fbff);
 }
 
+.priority-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.priority-filter-heading {
+  align-items: center;
+  color: #7893ab;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 2px;
+  margin-left: 20px;
+}
+
+.priority-filter-btn {
+  border: 1.5px solid #d1d5db;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.38;
+  padding: 4px 12px;
+  transition: opacity 0.15s;
+  background: #f9fafb;
+  color: #6b7280;
+}
+
+.priority-filter-btn.active {
+  opacity: 1;
+}
+
+.priority-filter-btn:hover {
+  opacity: 0.7;
+}
+
+.priority-filter-btn.active:hover {
+  opacity: 0.82;
+}
+
+.priority-filter-btn[data-priority="top_priority"].active {
+  background: #fff1f0;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.priority-filter-btn[data-priority="priority"].active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
+.priority-filter-btn[data-priority="semi_priority"].active {
+  background: #f5f3ff;
+  border-color: #c4b5fd;
+  color: #7c3aed;
+}
+
+.priority-filter-btn[data-priority="defer"].active {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.priority-filter-btn[data-priority="done"].active {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #16a34a;
+}
+
+.priority-filter-btn[data-priority="none"].active {
+  background: #fafafa;
+  border-color: #e5e7eb;
+  color: #6b7280;
+}
+
+
 .section-head {
   display: flex;
   align-items: flex-start;
@@ -333,6 +412,63 @@
 @keyframes toast-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+.save-indicator {
+  align-items: center;
+  border-radius: 12px;
+  bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14);
+  display: flex;
+  height: 48px;
+  justify-content: center;
+  pointer-events: none;
+  position: fixed;
+  right: 24px;
+  width: 48px;
+  z-index: 1100;
+}
+
+.save-indicator-saving {
+  background: #eff6ff;
+  border: 1.5px solid #b9d3ff;
+  color: #1d4f91;
+}
+
+.save-indicator-success {
+  animation: save-indicator-success 1.6s ease forwards;
+  background: #ecfdf3;
+  border: 1.5px solid #a7efc1;
+  color: #176b38;
+}
+
+.save-indicator-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.save-indicator-saving .save-indicator-icon {
+  animation: toast-spin 0.7s linear infinite;
+}
+
+@keyframes save-indicator-success {
+  0% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  15% {
+    transform: scale(1);
+  }
+
+  65% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0.96);
   }
 }
 
@@ -669,7 +805,7 @@
   align-items: center;
   column-gap: 12px;
   display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) 80px 80px 120px 120px 44px;
+  grid-template-columns: minmax(160px, 1.5fr) 72px 80px 80px 120px 120px 44px;
 }
 
 .manage-head-row {
@@ -709,6 +845,31 @@
   white-space: nowrap;
 }
 
+.manage-row-birthday {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.manage-birthday-date {
+  color: #38536f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.manage-birthday-days {
+  color: #7893ab;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.manage-birthday-today {
+  color: #d97706;
+  font-weight: 700;
+}
+
 .manage-row-field {
   align-items: center;
   display: flex;
@@ -744,6 +905,10 @@
 
 .manage-candidates {
   margin-top: 12px;
+}
+
+.candidate-list .helper-text {
+  padding: 14px 16px;
 }
 
 .optimize-layout {
@@ -1581,6 +1746,28 @@
     border-bottom: 1px solid #e5eef8;
     grid-column: auto;
     padding-bottom: 12px;
+  }
+
+  .manage-row-birthday {
+    align-items: flex-start;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 84px minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .manage-row-birthday::before {
+    color: #70849c;
+    content: attr(data-label);
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.8;
+  }
+
+  .manage-birthday-date,
+  .manage-birthday-days {
+    font-size: 13px;
   }
 
   .manage-row-field {

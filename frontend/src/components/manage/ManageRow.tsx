@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import type { PriorityKey, Student } from '../../types'
 import { IconThumb } from '../common/IconThumb'
+import { daysUntilBirthday, formatBirthday } from '../../lib/birthday'
 
 type ManageDraft = {
   currentLevel: string
@@ -27,11 +28,23 @@ function ManageRowComponent({
 }: ManageRowProps) {
   const hasTarget = draft.targetLevel.trim() !== ''
 
+  const birthdayLabel = formatBirthday(student.birthday)
+  const days = student.birthday ? daysUntilBirthday(student.birthday) : null
+  const daysLabel =
+    days === null ? '-' : days === 0 ? '今日！' : `あと${days}日`
+
   return (
     <div className="manage-row">
       <div className="manage-row-student" data-label="生徒">
         <IconThumb filePath={student.icon_path} label={student.name} size={38} tone="student" />
         <span>{student.name}</span>
+      </div>
+
+      <div className="manage-row-birthday" data-label="誕生日">
+        <span className="manage-birthday-date">{birthdayLabel}</span>
+        <span className={`manage-birthday-days${days === 0 ? ' manage-birthday-today' : ''}`}>
+          {daysLabel}
+        </span>
       </div>
 
       <label className="manage-row-field" data-label="現在">
@@ -86,7 +99,7 @@ function ManageRowComponent({
           <option value="top_priority">最優先</option>
           <option value="priority">優先</option>
           <option value="semi_priority">準優先</option>
-          <option value="defer">見送り</option>
+          <option value="defer">保留</option>
           <option value="done">終了</option>
         </select>
       </label>

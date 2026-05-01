@@ -18,7 +18,7 @@ export const PRIORITY_OPTIONS = [
   { value: 'top_priority', label: '最優先' },
   { value: 'priority', label: '優先' },
   { value: 'semi_priority', label: '準優先' },
-  { value: 'defer', label: '見送り' },
+  { value: 'defer', label: '保留' },
   { value: 'done', label: '終了' },
 ] as const
 

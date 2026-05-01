@@ -50,7 +50,7 @@ export const PRIORITY_LABELS: Record<string, string> = {
   top_priority: '最優先',
   priority: '優先',
   semi_priority: '準優先',
-  defer: '見送り',
+  defer: '保留',
   done: '終了',
 }
 

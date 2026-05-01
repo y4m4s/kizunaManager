@@ -8,12 +8,14 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { api } from '../api'
-import { PRIORITY_LABELS, PRIORITY_SORT_ORDER } from '../constants'
+import { PRIORITY_LABELS, PRIORITY_OPTIONS, PRIORITY_SORT_ORDER } from '../constants'
 import { calcRequiredExp, clampLevel, formatNumber } from '../lib/bond'
+import { normalizeForSearch } from '../lib/search'
 import type { Plan, PriorityKey, Student } from '../types'
 import { ConfirmModal } from '../components/common/ConfirmModal'
 import type { ToastKind } from '../components/common/Toast'
 import { ManageRow } from '../components/manage/ManageRow'
+import { SaveIndicator, type SaveStatus } from '../components/manage/SaveIndicator'
 
 type ManageScreenProps = {
   bridgeReady: boolean
@@ -27,6 +29,13 @@ type ManageDraft = {
   targetLevel: string
   priority: PriorityKey
 }
+
+type PriorityFilterKey = PriorityKey | 'none'
+
+const PRIORITY_FILTER_OPTIONS: Array<{ value: PriorityFilterKey; label: string }> = [
+  ...PRIORITY_OPTIONS,
+  { value: 'none', label: '未設定' },
+]
 
 const SAVE_DEBOUNCE_MS = 700
 
@@ -64,6 +73,8 @@ export function ManageScreen({
   const pendingSaveCountRef = useRef(0)
   const saveFailureMessageRef = useRef<string | null>(null)
   const [activeCandidateId, setActiveCandidateId] = useState<number | null>(null)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [hiddenPriorities, setHiddenPriorities] = useState<Set<PriorityFilterKey>>(new Set())
 
   function plansByStudentFrom(rows: Plan[]): Record<number, Plan> {
     return Object.fromEntries(rows.map((plan) => [plan.student_id, plan])) as Record<number, Plan>
@@ -145,15 +156,15 @@ export function ManageScreen({
     return true
   }
 
-  function showSavingToast() {
+  function showSavingIndicator() {
     if (pendingSaveCountRef.current === 0) {
       saveFailureMessageRef.current = null
     }
     pendingSaveCountRef.current += 1
-    onToast('保存しています……', 'saving', null)
+    setSaveStatus('saving')
   }
 
-  function settleSavingToast(success: boolean, message?: string) {
+  function settleSavingIndicator(success: boolean, message?: string) {
     if (!success) {
       saveFailureMessageRef.current = message ?? '保存に失敗しました'
     }
@@ -164,9 +175,10 @@ export function ManageScreen({
     if (saveFailureMessageRef.current) {
       onToast(saveFailureMessageRef.current, 'error')
       saveFailureMessageRef.current = null
+      setSaveStatus('idle')
       return
     }
-    onToast('保存しました', 'success')
+    setSaveStatus('success')
   }
 
   useEffect(() => {
@@ -233,6 +245,20 @@ export function ManageScreen({
     return draft.targetLevel.trim() ? draft.priority : null
   }
 
+  function getStudentPriorityKey(student: Student): PriorityFilterKey {
+    const draft = drafts[student.id] || defaultDraft(student, plansByStudent[student.id])
+    return draft.targetLevel.trim() ? draft.priority : 'none'
+  }
+
+  function togglePriority(key: PriorityFilterKey) {
+    setHiddenPriorities((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   const managedStudents = students
     .filter((student) => student.is_owned || student.id in plansByStudent)
     .sort((left, right) => {
@@ -253,11 +279,15 @@ export function ManageScreen({
       return left.name.localeCompare(right.name, 'ja')
     })
 
+  const filteredStudents = managedStudents.filter(
+    (student) => !hiddenPriorities.has(getStudentPriorityKey(student)),
+  )
+
   const candidateStudents = students
     .filter((student) => !student.is_owned && !(student.id in plansByStudent))
     .filter((student) =>
       deferredAddQuery.trim()
-        ? student.name.toLowerCase().includes(deferredAddQuery.trim().toLowerCase())
+        ? normalizeForSearch(student.name).includes(normalizeForSearch(deferredAddQuery.trim()))
         : true,
     )
     .slice(0, 20)
@@ -406,7 +436,7 @@ export function ManageScreen({
   }
 
   function queueRowSave(studentId: number, draft: ManageDraft, draftVersion: number): Promise<void> {
-    showSavingToast()
+    showSavingIndicator()
     const previous = saveQueueRef.current[studentId] ?? Promise.resolve()
     const queued = previous
       .catch(() => undefined)
@@ -417,11 +447,11 @@ export function ManageScreen({
     saveQueueRef.current[studentId] = queued
     void queued
       .then(() => {
-        settleSavingToast(true)
+        settleSavingIndicator(true)
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error)
-        settleSavingToast(false, `保存に失敗しました: ${message}`)
+        settleSavingIndicator(false, `保存に失敗しました: ${message}`)
       })
       .finally(() => {
         if (saveQueueRef.current[studentId] === queued) {
@@ -483,7 +513,7 @@ export function ManageScreen({
     const dirtyIds = [...dirtyStudentIdsRef.current]
     if (!dirtyIds.length) {
       if (showNoopToast) {
-        onToast('保存しました', 'success')
+        setSaveStatus('success')
       }
       return true
     }
@@ -519,9 +549,9 @@ export function ManageScreen({
   }
 
   async function addStudent(selectedStudent?: Student) {
-    const lowered = addQuery.trim().toLowerCase()
+    const normalized = normalizeForSearch(addQuery.trim())
     const matched = selectedStudent ?? candidateStudents.find(
-      (student) => student.name.toLowerCase() === lowered,
+      (student) => normalizeForSearch(student.name) === normalized,
     ) ?? candidateStudents[0]
     if (!matched) {
       window.alert('追加したい生徒を候補から選んでください。')
@@ -661,9 +691,29 @@ export function ManageScreen({
         ) : null}
       </section>
 
+      <div className="priority-filter-row" role="group" aria-label="優先度フィルター">
+        <span className="priority-filter-heading">フィルター</span>
+        {PRIORITY_FILTER_OPTIONS.map((option) => {
+          const visible = !hiddenPriorities.has(option.value)
+          return (
+            <button
+              key={option.value}
+              aria-pressed={visible}
+              className={`priority-filter-btn${visible ? ' active' : ''}`}
+              data-priority={option.value}
+              type="button"
+              onClick={() => togglePriority(option.value)}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+
       <section className="card-shell manage-table-shell">
         <div className="manage-head-row">
           <span>生徒</span>
+          <span>誕生日</span>
           <span>現在</span>
           <span>目標</span>
           <span>優先度</span>
@@ -676,8 +726,8 @@ export function ManageScreen({
             <div className="empty-state">
               <p>読み込み中...</p>
             </div>
-          ) : managedStudents.length ? (
-            managedStudents.map((student) => {
+          ) : filteredStudents.length ? (
+            filteredStudents.map((student) => {
               const draft = drafts[student.id] || defaultDraft(student, plansByStudent[student.id])
               const requiredExp = getRequiredExp(student, draft)
               return (
@@ -696,7 +746,11 @@ export function ManageScreen({
             })
           ) : (
             <div className="empty-state">
-              <p>まだ管理中の生徒はいません。上の検索バーから追加できます。</p>
+              <p>
+                {managedStudents.length
+                  ? 'フィルターに一致する生徒がいません。上のボタンで表示する優先度を選んでください。'
+                  : 'まだ管理中の生徒はいません。上の検索バーから追加できます。'}
+              </p>
             </div>
           )}
         </div>
@@ -708,6 +762,11 @@ export function ManageScreen({
         message={removeTarget ? `${removeTarget.name}を管理から外しますか？` : ''}
         onCancel={() => setRemoveTarget(null)}
         onConfirm={() => void confirmRemoveStudent()}
+      />
+
+      <SaveIndicator
+        status={saveStatus}
+        onFadeOut={() => setSaveStatus('idle')}
       />
     </div>
   )

@@ -7,6 +7,7 @@ import { SearchResultsTable } from '../components/search/SearchResultsTable'
 import { StudentPicker } from '../components/search/StudentPicker'
 import type { ToastKind } from '../components/common/Toast'
 import { exportSearchResultsPng } from '../lib/exportSearchResultsPng'
+import { normalizeForSearch } from '../lib/search'
 
 type SearchScreenProps = {
   bridgeReady: boolean
@@ -89,7 +90,7 @@ export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScree
     .filter((student) => !selectedStudentIds.includes(student.id))
     .filter((student) =>
       deferredStudentQuery.trim()
-        ? student.name.toLowerCase().includes(deferredStudentQuery.trim().toLowerCase())
+        ? normalizeForSearch(student.name).includes(normalizeForSearch(deferredStudentQuery.trim()))
         : false,
     )
     .slice(0, 40)
@@ -164,9 +165,9 @@ export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScree
   }
 
   function submitStudent(activeStudent?: Student) {
-    const lowered = studentQuery.trim().toLowerCase()
+    const normalized = normalizeForSearch(studentQuery.trim())
     const matched = activeStudent ?? candidateStudents.find(
-      (student) => student.name.toLowerCase() === lowered,
+      (student) => normalizeForSearch(student.name) === normalized,
     ) ?? candidateStudents[0]
     if (!matched) {
       window.alert('候補から追加したい生徒を選んでください。')
