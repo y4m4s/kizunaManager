@@ -37,11 +37,6 @@ export const PRIORITY_SORT_ORDER: Record<string, number> = Object.fromEntries(
   PRIORITY_OPTIONS.map((option, index) => [option.value, index]),
 )
 
-export const OPTIMIZE_STRATEGIES = [
-  { value: 'priority', label: '優先度順' },
-  { value: 'balanced', label: '均等配分' },
-  { value: 'focus', label: '1人集中' },
-] as const
 
 export const GIFT_BOX_TYPES = [
   { key: 'orange_S', label: '橙 小' },

@@ -76,7 +76,6 @@ export interface MasterStatus {
 }
 
 export interface OptimizeResult {
-  strategy: string
   results: Array<{
     id: number
     student_id: number

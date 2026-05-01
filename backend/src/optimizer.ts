@@ -366,13 +366,18 @@ export function sortMatchingItems(
 function buildPlanState(
   plan: PlanRecord,
   student: StudentRecord | undefined,
-  dailyCafeTaps = 0,
+  dailyTopPriorityCafeTaps = 0,
+  dailyOtherCafeTaps = 0,
   dailySchedules = 0,
   today = new Date(),
 ): OptimizeStudentResult {
   let passiveExp = 0
   let daysUntilBirthday = 0
   if (student) {
+    const dailyCafeTaps =
+      String(plan.priority || 'priority') === 'top_priority'
+        ? dailyTopPriorityCafeTaps
+        : dailyOtherCafeTaps
     ;[passiveExp, daysUntilBirthday] = plannedPassiveExp(
       student,
       dailyCafeTaps,
@@ -615,7 +620,6 @@ function buildCandidate(
   itemId: number,
   stock: Record<number, number>,
   itemsById: Record<number, ItemRecord>,
-  strategy: string,
   evaluations: EvaluationCache,
   compatibilityStats: CompatibilityStats,
 ): {
@@ -652,39 +656,17 @@ function buildCandidate(
     ? candidateValue - alternative.best_value
     : Number.POSITIVE_INFINITY
 
-  const score = strategy === 'focus'
-    ? [
-        candidateValue,
-        regret,
-        -alternative.option_count,
-        usefulExp,
-        -waste,
-        -compatibilityCount,
-        EFFECT_ORDER[evaluation.effect] || 0,
-      ]
-    : strategy === 'balanced'
-      ? [
-          regret,
-          candidateValue,
-          -alternative.option_count,
-          usefulExp,
-          -completionRatio,
-          priorityRank,
-          -waste,
-          -compatibilityCount,
-          EFFECT_ORDER[evaluation.effect] || 0,
-        ]
-      : [
-          regret,
-          priorityRank,
-          candidateValue,
-          -alternative.option_count,
-          usefulExp,
-          -waste,
-          -compatibilityCount,
-          EFFECT_ORDER[evaluation.effect] || 0,
-          -completionRatio,
-        ]
+  const score = [
+    regret,
+    priorityRank,
+    candidateValue,
+    -alternative.option_count,
+    usefulExp,
+    -waste,
+    -compatibilityCount,
+    EFFECT_ORDER[evaluation.effect] || 0,
+    -completionRatio,
+  ]
 
   return {
     plan_state: planState,
@@ -696,70 +678,6 @@ function buildCandidate(
     },
     score,
   }
-}
-
-function pickBestItem(
-  planState: OptimizeStudentResult,
-  stock: Record<number, number>,
-  itemsById: Record<number, ItemRecord>,
-  evaluations: EvaluationCache,
-  compatibilityStats: CompatibilityStats,
-): [number, ItemRecord & { effect: string; effect_label: string; gained_exp: number }] | null {
-  let best:
-    | [number, ItemRecord & { effect: string; effect_label: string; gained_exp: number }]
-    | null = null
-  let bestScore: number[] | null = null
-
-  for (const [itemIdText, quantityValue] of Object.entries(stock)) {
-    const itemId = Number(itemIdText)
-    const quantity = Number(quantityValue)
-    if (quantity <= 0) {
-      continue
-    }
-    const candidate = buildCandidate(
-      planState,
-      itemId,
-      stock,
-      itemsById,
-      'focus',
-      evaluations,
-      compatibilityStats,
-    )
-    if (!candidate) {
-      continue
-    }
-    if (!bestScore || compareScores(candidate.score, bestScore) > 0) {
-      bestScore = candidate.score
-      best = [itemId, candidate.item]
-    }
-  }
-
-  return best
-}
-
-function allocateToPlan(
-  planState: OptimizeStudentResult,
-  stock: Record<number, number>,
-  itemsById: Record<number, ItemRecord>,
-  evaluations: EvaluationCache,
-  compatibilityStats: CompatibilityStats,
-): boolean {
-  const best = pickBestItem(
-    planState,
-    stock,
-    itemsById,
-    evaluations,
-    compatibilityStats,
-  )
-  if (!best) {
-    return false
-  }
-  const [itemId, item] = best
-  stock[itemId] -= 1
-  planState.allocated_exp += item.gained_exp
-  planState.remaining_exp = Math.max(0, Number(planState.remaining_exp || 0) - item.gained_exp)
-  appendAllocation(planState, item)
-  return true
 }
 
 function compareScores(left: number[], right: number[]): number {
@@ -778,7 +696,6 @@ function pickBestCandidateForItem(
   states: OptimizeStudentResult[],
   stock: Record<number, number>,
   itemsById: Record<number, ItemRecord>,
-  strategy: string,
   evaluations: EvaluationCache,
   compatibilityStats: CompatibilityStats,
 ): {
@@ -808,7 +725,6 @@ function pickBestCandidateForItem(
       itemId,
       stock,
       itemsById,
-      strategy,
       evaluations,
       compatibilityStats,
     )
@@ -828,7 +744,6 @@ function pickNextGlobalCandidate(
   states: OptimizeStudentResult[],
   stock: Record<number, number>,
   itemsById: Record<number, ItemRecord>,
-  strategy: string,
   evaluations: EvaluationCache,
   compatibilityStats: CompatibilityStats,
 ): {
@@ -854,7 +769,6 @@ function pickNextGlobalCandidate(
       states,
       stock,
       itemsById,
-      strategy,
       evaluations,
       compatibilityStats,
     )
@@ -888,32 +802,9 @@ function allocateStateGroup(
   states: OptimizeStudentResult[],
   stock: Record<number, number>,
   itemsById: Record<number, ItemRecord>,
-  strategy: string,
   evaluations: EvaluationCache,
 ): void {
   if (!states.length) {
-    return
-  }
-
-  if (strategy === 'focus') {
-    const orderedStates = [...states].sort((left, right) => {
-      const priorityDiff =
-        (PRIORITY_ORDER[String(right.priority || 'priority')] || 0) -
-        (PRIORITY_ORDER[String(left.priority || 'priority')] || 0)
-      if (priorityDiff !== 0) {
-        return priorityDiff
-      }
-      return left.student_name.localeCompare(right.student_name, 'ja')
-    })
-
-    for (const state of orderedStates) {
-      while (state.remaining_exp > 0) {
-        const compatibilityStats = buildCompatibilityStats(states, stock, evaluations, itemsById)
-        if (!allocateToPlan(state, stock, itemsById, evaluations, compatibilityStats)) {
-          break
-        }
-      }
-    }
     return
   }
 
@@ -923,7 +814,6 @@ function allocateStateGroup(
       states,
       stock,
       itemsById,
-      strategy,
       evaluations,
       compatibilityStats,
     )
@@ -972,9 +862,10 @@ export function optimizeAllocation(
   inventory: Record<number, number>,
   studentsById: Record<number, StudentRecord>,
   itemsById: Record<number, ItemRecord>,
-  strategy = 'priority',
-  dailyCafeTaps = 0,
+  dailyTopPriorityCafeTaps = 0,
+  dailyOtherCafeTaps = dailyTopPriorityCafeTaps,
   dailySchedules = 0,
+  includeSemiPriority = true,
 ): OptimizeResultRecord {
   const stock = Object.fromEntries(
     Object.entries(inventory)
@@ -988,7 +879,8 @@ export function optimizeAllocation(
       buildPlanState(
         plan,
         studentsById[plan.student_id],
-        dailyCafeTaps,
+        dailyTopPriorityCafeTaps,
+        dailyOtherCafeTaps,
         dailySchedules,
         today,
       ),
@@ -1019,8 +911,10 @@ export function optimizeAllocation(
     (state) => String(state.priority || 'priority') === 'semi_priority',
   )
 
-  allocateStateGroup(primaryStates, stock, itemsById, strategy, evaluations)
-  allocateStateGroup(semiPriorityStates, stock, itemsById, strategy, evaluations)
+  allocateStateGroup(primaryStates, stock, itemsById, evaluations)
+  if (includeSemiPriority) {
+    allocateStateGroup(semiPriorityStates, stock, itemsById, evaluations)
+  }
   let totalRequired = 0
   let totalAllocated = 0
   let totalPassive = 0
@@ -1070,7 +964,6 @@ export function optimizeAllocation(
   const [boxCount, sourceItemCount] = craftableSelectableBoxCount(leftovers)
 
   return {
-    strategy,
     results,
     summary: {
       total_required_exp: totalRequired,

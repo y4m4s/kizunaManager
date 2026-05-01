@@ -122,9 +122,10 @@ interface RawApi {
   delete_plan(plan_id: number): Promise<{ ok: boolean }>
 
   optimize(
-    strategy?: string,
-    daily_cafe_taps?: number,
+    daily_top_priority_cafe_taps?: number,
+    daily_other_cafe_taps?: number,
     daily_schedules?: number,
+    include_semi_priority?: boolean,
   ): Promise<OptimizeResult>
 }
 
@@ -221,13 +222,19 @@ export const api: RawApi = {
   delete_plan(plan_id) {
     return requestJson(`/api/plans/${plan_id}`, { method: 'DELETE' })
   },
-  optimize(strategy = 'priority', daily_cafe_taps = 0, daily_schedules = 0) {
+  optimize(
+    daily_top_priority_cafe_taps = 0,
+    daily_other_cafe_taps = 0,
+    daily_schedules = 0,
+    include_semi_priority = true,
+  ) {
     return requestJson('/api/optimize', {
       method: 'POST',
       body: JSON.stringify({
-        strategy,
-        daily_cafe_taps,
+        daily_top_priority_cafe_taps,
+        daily_other_cafe_taps,
         daily_schedules,
+        include_semi_priority,
       }),
     })
   },

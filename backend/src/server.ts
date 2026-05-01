@@ -478,10 +478,21 @@ async function handleApiRequest(
 
   if (pathname === '/api/optimize' && method === 'POST') {
     const body = await readJsonBody<{
-      strategy?: string
       daily_cafe_taps?: number
+      daily_top_priority_cafe_taps?: number
+      daily_other_cafe_taps?: number
       daily_schedules?: number
+      include_semi_priority?: boolean
     }>(request)
+    const legacyCafeTaps = Number(body.daily_cafe_taps || 0)
+    const dailyTopPriorityCafeTaps =
+      body.daily_top_priority_cafe_taps === undefined
+        ? legacyCafeTaps
+        : Number(body.daily_top_priority_cafe_taps || 0)
+    const dailyOtherCafeTaps =
+      body.daily_other_cafe_taps === undefined
+        ? legacyCafeTaps
+        : Number(body.daily_other_cafe_taps || 0)
     const [plans, inventory, students, items] = database.snapshotForOptimizer()
     sendJson(
       response,
@@ -491,9 +502,10 @@ async function handleApiRequest(
         inventory,
         students,
         items,
-        String(body.strategy || 'priority'),
-        Number(body.daily_cafe_taps || 0),
+        dailyTopPriorityCafeTaps,
+        dailyOtherCafeTaps,
         Number(body.daily_schedules || 0),
+        body.include_semi_priority !== false,
       ),
     )
     return true

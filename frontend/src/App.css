@@ -1122,7 +1122,7 @@
 .optimize-settings-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 14px;
 }
 
@@ -1135,6 +1135,24 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.optimize-toggle-label {
+  align-items: center;
+  color: #38536f;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 7px;
+  user-select: none;
+}
+
+.optimize-toggle-label input[type="checkbox"] {
+  accent-color: #2563eb;
+  cursor: pointer;
+  height: 15px;
+  width: 15px;
 }
 
 .optimize-run-copy h3 {

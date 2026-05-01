@@ -101,7 +101,6 @@ export interface OptimizeStudentResult {
 }
 
 export interface OptimizeResultRecord {
-  strategy: string
   results: OptimizeStudentResult[]
   summary: {
     total_required_exp: number

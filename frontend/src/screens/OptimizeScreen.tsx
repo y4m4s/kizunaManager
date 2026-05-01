@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { OPTIMIZE_STRATEGIES, PRIORITY_SORT_ORDER } from '../constants'
+import { PRIORITY_SORT_ORDER } from '../constants'
 import type { Item, OptimizeResult, PriorityKey, Student } from '../types'
 import { OptimizeResultsTable } from '../components/optimize/OptimizeResultsTable'
 
@@ -10,15 +10,27 @@ type OptimizeScreenProps = {
   refreshToken: number
 }
 
-const DAILY_CAFE_TAPS_KEY = 'optimize:dailyCafeTaps'
+const LEGACY_DAILY_CAFE_TAPS_KEY = 'optimize:dailyCafeTaps'
+const DAILY_TOP_PRIORITY_CAFE_TAPS_KEY = 'optimize:dailyTopPriorityCafeTaps'
+const DAILY_OTHER_CAFE_TAPS_KEY = 'optimize:dailyOtherCafeTaps'
 const DAILY_SCHEDULES_KEY = 'optimize:dailySchedules'
 
-function loadPersistedCount(key: string): string {
+function validPersistedCount(value: string | null): string | null {
+  return value && /^\d+$/.test(value) ? value : null
+}
+
+function loadPersistedCount(key: string, fallbackKey?: string): string {
   if (typeof window === 'undefined') {
     return '0'
   }
-  const stored = window.localStorage.getItem(key)
-  return stored && /^\d+$/.test(stored) ? stored : '0'
+  const stored = validPersistedCount(window.localStorage.getItem(key))
+  if (stored) {
+    return stored
+  }
+  if (fallbackKey) {
+    return validPersistedCount(window.localStorage.getItem(fallbackKey)) || '0'
+  }
+  return '0'
 }
 
 function sanitizeCountInput(value: string): string {
@@ -44,9 +56,14 @@ export function OptimizeScreen({
 }: OptimizeScreenProps) {
   const [items, setItems] = useState<Item[]>([])
   const [studentsById, setStudentsById] = useState<Record<number, Student>>({})
-  const [strategy, setStrategy] = useState('priority')
-  const [dailyCafeTaps, setDailyCafeTaps] = useState(() => loadPersistedCount(DAILY_CAFE_TAPS_KEY))
+  const [dailyTopPriorityCafeTaps, setDailyTopPriorityCafeTaps] = useState(() =>
+    loadPersistedCount(DAILY_TOP_PRIORITY_CAFE_TAPS_KEY, LEGACY_DAILY_CAFE_TAPS_KEY),
+  )
+  const [dailyOtherCafeTaps, setDailyOtherCafeTaps] = useState(() =>
+    loadPersistedCount(DAILY_OTHER_CAFE_TAPS_KEY, LEGACY_DAILY_CAFE_TAPS_KEY),
+  )
   const [dailySchedules, setDailySchedules] = useState(() => loadPersistedCount(DAILY_SCHEDULES_KEY))
+  const [includeSemiPriority, setIncludeSemiPriority] = useState(true)
   const [result, setResult] = useState<OptimizeResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [optimizing, setOptimizing] = useState(false)
@@ -88,8 +105,15 @@ export function OptimizeScreen({
     if (typeof window === 'undefined') {
       return
     }
-    window.localStorage.setItem(DAILY_CAFE_TAPS_KEY, dailyCafeTaps || '0')
-  }, [dailyCafeTaps])
+    window.localStorage.setItem(DAILY_TOP_PRIORITY_CAFE_TAPS_KEY, dailyTopPriorityCafeTaps || '0')
+  }, [dailyTopPriorityCafeTaps])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    window.localStorage.setItem(DAILY_OTHER_CAFE_TAPS_KEY, dailyOtherCafeTaps || '0')
+  }, [dailyOtherCafeTaps])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -102,9 +126,10 @@ export function OptimizeScreen({
     setOptimizing(true)
     try {
       const next = await api.optimize(
-        strategy,
-        parseCountInput(dailyCafeTaps),
+        parseCountInput(dailyTopPriorityCafeTaps),
+        parseCountInput(dailyOtherCafeTaps),
         parseCountInput(dailySchedules),
+        includeSemiPriority,
       )
       if (!next || typeof next !== 'object') {
         setResult(null)
@@ -187,21 +212,34 @@ export function OptimizeScreen({
           <div>
             <h3>誕生日までの自然加算</h3>
             <p>
-              今日から次の誕生日までの残り日数を使って、カフェタップとスケジュール分の絆EXPを見込みます。
+              今日から次の誕生日までの残り日数を使って、優先度別のカフェタップとスケジュール分の絆EXPを見込みます。
             </p>
           </div>
         </div>
 
         <div className="optimize-settings-grid">
           <label className="inline-field">
-            <span>1日のカフェタップ回数</span>
+            <span>1日のカフェタップ回数（最優先）</span>
             <input
               className="text-input compact"
               inputMode="numeric"
               placeholder="0"
               type="text"
-              value={dailyCafeTaps}
-              onChange={(event) => setDailyCafeTaps(sanitizeCountInput(event.target.value))}
+              value={dailyTopPriorityCafeTaps}
+              onChange={(event) =>
+                setDailyTopPriorityCafeTaps(sanitizeCountInput(event.target.value))
+              }
+            />
+          </label>
+          <label className="inline-field">
+            <span>1日のカフェタップ回数（それ以外）</span>
+            <input
+              className="text-input compact"
+              inputMode="numeric"
+              placeholder="0"
+              type="text"
+              value={dailyOtherCafeTaps}
+              onChange={(event) => setDailyOtherCafeTaps(sanitizeCountInput(event.target.value))}
             />
           </label>
           <label className="inline-field">
@@ -218,7 +256,7 @@ export function OptimizeScreen({
         </div>
 
         <p className="optimize-settings-note">
-          カフェタップは1回あたり15、スケジュールは Rank 12 想定で通常+25、25%でボーナス+25 の期待値で計算します。
+          カフェタップは最優先とそれ以外で別々に反映します。1回あたり15、スケジュールは Rank 12 想定で通常+25、25%でボーナス+25 の期待値で計算します。
         </p>
       </section>
 
@@ -229,17 +267,14 @@ export function OptimizeScreen({
             <p className="helper-text">在庫と優先度をもとに、相性と代替性を見ながら配分します。</p>
           </div>
           <div className="toolbar-actions">
-            <select
-              className="select-input"
-              value={strategy}
-              onChange={(event) => setStrategy(event.target.value)}
-            >
-              {OPTIMIZE_STRATEGIES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <label className="optimize-toggle-label">
+              <input
+                checked={includeSemiPriority}
+                type="checkbox"
+                onChange={(event) => setIncludeSemiPriority(event.target.checked)}
+              />
+              準優先を含める
+            </label>
             <button
               className="btn btn-primary"
               disabled={loading || optimizing || prioritySavingStudentId !== null}
@@ -258,7 +293,14 @@ export function OptimizeScreen({
           void handleResultPriorityChange(row, priority)
         }
         prioritySavingStudentId={prioritySavingStudentId}
-        result={result}
+        result={
+          result && !includeSemiPriority
+            ? {
+                ...result,
+                results: result.results.filter((row) => row.priority !== 'semi_priority'),
+              }
+            : result
+        }
         studentsById={studentsById}
       />
     </div>
