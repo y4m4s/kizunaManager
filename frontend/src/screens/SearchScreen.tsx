@@ -1,13 +1,16 @@
-﻿import { useDeferredValue, useEffect, useState } from 'react'
+﻿import { useDeferredValue, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { SEARCH_TABS } from '../constants'
 import type { Item, SearchResult, Student } from '../types'
 import { GiftPicker } from '../components/search/GiftPicker'
 import { SearchResultsTable } from '../components/search/SearchResultsTable'
 import { StudentPicker } from '../components/search/StudentPicker'
+import type { ToastKind } from '../components/common/Toast'
+import { exportSearchResultsPng } from '../lib/exportSearchResultsPng'
 
 type SearchScreenProps = {
   bridgeReady: boolean
+  onToast: (message: string, kind?: ToastKind, duration?: number | null) => void
   refreshToken: number
 }
 
@@ -35,7 +38,7 @@ function sortGiftItems(items: Item[]): Item[] {
   })
 }
 
-export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
+export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScreenProps) {
   const [activeTab, setActiveTab] = useState<'gift' | 'student'>('gift')
   const [items, setItems] = useState<Item[]>([])
   const [students, setStudents] = useState<Student[]>([])
@@ -46,6 +49,7 @@ export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
   const [hiddenResultIds, setHiddenResultIds] = useState<number[]>([])
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(true)
+  const resultsExportRef = useRef<HTMLDivElement>(null)
 
   const deferredStudentQuery = useDeferredValue(studentQuery)
 
@@ -99,6 +103,28 @@ export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
       return row.effects.extra_large.length > 0 || row.effects.large.length > 0
     })
 
+  useEffect(() => {
+    if (!bridgeReady || activeTab !== 'student' || !selectedStudentIds.length) {
+      return
+    }
+
+    let disposed = false
+
+    async function searchByStudents() {
+      const next = await api.run_student_search(selectedStudentIds)
+      if (disposed) {
+        return
+      }
+      setResults(Array.isArray(next) ? next : [])
+    }
+
+    void searchByStudents()
+
+    return () => {
+      disposed = true
+    }
+  }, [activeTab, bridgeReady, refreshToken, selectedStudentIds])
+
   async function runSearch() {
     setHideMedium(false)
     setHiddenResultIds([])
@@ -112,13 +138,6 @@ export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
       setResults(Array.isArray(next) ? next : [])
       return
     }
-
-    if (!selectedStudentIds.length) {
-      window.alert('生徒を1人以上追加してください。')
-      return
-    }
-    const next = await api.run_student_search(selectedStudentIds)
-    setResults(Array.isArray(next) ? next : [])
   }
 
   function switchTab(tab: 'gift' | 'student') {
@@ -136,6 +155,14 @@ export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
     setStudentQuery('')
   }
 
+  function removeStudent(studentId: number) {
+    const nextStudentIds = selectedStudentIds.filter((value) => value !== studentId)
+    setSelectedStudentIds(nextStudentIds)
+    if (!nextStudentIds.length) {
+      setResults([])
+    }
+  }
+
   function submitStudent(activeStudent?: Student) {
     const lowered = studentQuery.trim().toLowerCase()
     const matched = activeStudent ?? candidateStudents.find(
@@ -146,6 +173,39 @@ export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
       return
     }
     addStudent(matched)
+  }
+
+  async function exportStudentResults() {
+    if (!selectedStudentIds.length) {
+      onToast('生徒が追加されていません。')
+      return
+    }
+
+    try {
+      const next = await api.run_student_search(selectedStudentIds)
+      const nextResults = Array.isArray(next) ? next : []
+      setResults(nextResults)
+
+      if (!nextResults.length) {
+        onToast('出力できる検索結果がありません。', 'error')
+        return
+      }
+
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => resolve())
+        })
+      })
+
+      if (!resultsExportRef.current) {
+        onToast('出力できる検索結果がありません。', 'error')
+        return
+      }
+
+      await exportSearchResultsPng(resultsExportRef.current)
+    } catch (error) {
+      onToast(`出力に失敗しました: ${error instanceof Error ? error.message : String(error)}`, 'error')
+    }
   }
 
   function clearSelection() {
@@ -202,48 +262,52 @@ export function SearchScreen({ bridgeReady, refreshToken }: SearchScreenProps) {
           selectedStudents={selectedStudents}
           suggestions={candidateStudents}
           onAddStudent={addStudent}
+          onClear={clearSelection}
+          onExport={() => void exportStudentResults()}
           onQueryChange={setStudentQuery}
-          onRemoveStudent={(studentId) =>
-            setSelectedStudentIds((current) => current.filter((value) => value !== studentId))
-          }
+          onRemoveStudent={removeStudent}
           onSubmit={submitStudent}
         />
       )}
 
-      <section className="card-shell">
-        <div className="toolbar-row">
-          <div className="toolbar-actions">
-            <button className="btn btn-primary" disabled={loading} type="button" onClick={() => void runSearch()}>
-              {loading ? '読み込み中...' : 'この条件で検索する'}
-            </button>
-            <button className="btn" type="button" onClick={clearSelection}>
-              クリア
-            </button>
-          </div>
-
-          <div className="toolbar-actions">
-            {activeTab === 'gift' && results.length ? (
-              <button className="btn" type="button" onClick={() => setHideMedium((current) => !current)}>
-                {hideMedium ? '中を表示する' : '中を非表示にする'}
+      {activeTab === 'gift' ? (
+        <section className="card-shell">
+          <div className="toolbar-row">
+            <div className="toolbar-actions">
+              <button className="btn btn-primary" disabled={loading} type="button" onClick={() => void runSearch()}>
+                {loading ? '読み込み中...' : 'この条件で検索する'}
               </button>
-            ) : null}
-            {hiddenResultIds.length ? (
-              <button className="btn" type="button" onClick={() => setHiddenResultIds([])}>
-                非表示を解除
+              <button className="btn" type="button" onClick={clearSelection}>
+                クリア
               </button>
-            ) : null}
-          </div>
-        </div>
-      </section>
+            </div>
 
-      <SearchResultsTable
-        hideMedium={hideMedium}
-        mode={activeTab}
-        rows={visibleResults}
-        onHideRow={(studentId) =>
-          setHiddenResultIds((current) => [...current, studentId])
-        }
-      />
+            <div className="toolbar-actions">
+              {results.length ? (
+                <button className="btn" type="button" onClick={() => setHideMedium((current) => !current)}>
+                  {hideMedium ? '中を表示する' : '中を非表示にする'}
+                </button>
+              ) : null}
+              {hiddenResultIds.length ? (
+                <button className="btn" type="button" onClick={() => setHiddenResultIds([])}>
+                  非表示を解除
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <div ref={resultsExportRef}>
+        <SearchResultsTable
+          hideMedium={hideMedium}
+          mode={activeTab}
+          rows={visibleResults}
+          onHideRow={(studentId) =>
+            setHiddenResultIds((current) => [...current, studentId])
+          }
+        />
+      </div>
     </div>
   )
 }

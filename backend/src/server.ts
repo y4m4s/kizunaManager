@@ -239,6 +239,7 @@ async function serveFile(response: ServerResponse, filePath: string): Promise<vo
   response.statusCode = 200
   response.setHeader('Content-Type', contentTypeFor(filePath))
   response.setHeader('Content-Length', String(stat.size))
+  setCorsHeaders(response)
   fs.createReadStream(filePath).pipe(response)
 }
 

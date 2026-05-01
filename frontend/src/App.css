@@ -403,6 +403,26 @@
   gap: 10px;
 }
 
+.student-search-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.student-search-form .text-input {
+  flex: 0 1 440px;
+  max-width: 440px;
+  min-height: 48px;
+}
+
+.student-search-actions .btn {
+  font-size: 14px;
+  font-weight: 700;
+  min-height: 48px;
+  min-width: 104px;
+  padding-inline: 20px;
+}
+
 .text-input,
 .select-input {
   background: #ffffff;
@@ -1461,6 +1481,20 @@
   .inline-form .text-input,
   .inline-form .btn {
     width: 100%;
+  }
+
+  .student-search-form .text-input {
+    flex-basis: auto;
+    max-width: none;
+  }
+
+  .student-search-actions {
+    width: 100%;
+  }
+
+  .inline-form .student-search-actions .btn {
+    flex: 1 1 0;
+    width: auto;
   }
 
   .results-shell {

@@ -176,7 +176,7 @@ function App() {
       return <GiftManagementScreen bridgeReady={backendReady} refreshToken={refreshToken} />
     }
 
-    return <SearchScreen bridgeReady={backendReady} refreshToken={refreshToken} />
+    return <SearchScreen bridgeReady={backendReady} onToast={setNotice} refreshToken={refreshToken} />
   }
 
   return (

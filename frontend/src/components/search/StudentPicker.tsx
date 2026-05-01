@@ -7,6 +7,8 @@ type StudentPickerProps = {
   selectedStudents: Student[]
   suggestions: Student[]
   onAddStudent: (student: Student) => void
+  onClear: () => void
+  onExport: () => void
   onQueryChange: (value: string) => void
   onRemoveStudent: (studentId: number) => void
   onSubmit: (student?: Student) => void
@@ -17,6 +19,8 @@ export function StudentPicker({
   selectedStudents,
   suggestions,
   onAddStudent,
+  onClear,
+  onExport,
   onQueryChange,
   onRemoveStudent,
   onSubmit,
@@ -55,7 +59,7 @@ export function StudentPicker({
       </div>
 
       <div className="picker-block">
-        <div className="inline-form">
+        <div className="inline-form student-search-form">
           <input
             aria-activedescendant={activeStudent ? `${listId}-${activeStudent.id}` : undefined}
             aria-controls={query.trim() ? listId : undefined}
@@ -83,9 +87,17 @@ export function StudentPicker({
               }
             }}
           />
-          <button className="btn" type="button" onClick={() => onSubmit(activeStudent)}>
-            追加
-          </button>
+          <div className="student-search-actions">
+            <button className="btn btn-primary" type="button" onClick={() => onSubmit(activeStudent)}>
+              追加
+            </button>
+            <button className="btn" type="button" onClick={onClear}>
+              クリア
+            </button>
+            <button className="btn" type="button" onClick={onExport}>
+              出力
+            </button>
+          </div>
         </div>
 
         {query.trim() ? (
