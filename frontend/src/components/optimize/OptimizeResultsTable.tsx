@@ -18,6 +18,7 @@ type OptimizeResultsTableProps = {
 
 const SELECTABLE_BOX_ITEM_ID = -1001
 const SELECTABLE_BOX_LABEL = '選択式ボックス'
+const SELECTABLE_BOX_EXP = 60
 
 function isBouquetDisplayItem(
   item: { item_name?: string; gift_kind?: string },
@@ -132,6 +133,9 @@ export function OptimizeResultsTable({
           const student = studentsById[row.student_id]
           const birthday = student?.birthday || row.birthday || '-'
           const daysLabel = birthday === '-' ? '-' : `あと${row.days_until_birthday}日`
+          const shortageExp = Math.max(0, Number(row.remaining_exp || 0))
+          const shortageBoxCount = Math.ceil(shortageExp / SELECTABLE_BOX_EXP)
+          const predictedLabel = `Lv${row.current_bond_level} ⇒ Lv${row.predicted_level}`
           return (
             <div key={row.student_id} className="optimize-table-row">
               <div className="opt-student-cell" data-label="生徒">
@@ -165,7 +169,29 @@ export function OptimizeResultsTable({
                   <span className="opt-exp-passive">{`+${formatNumber(row.passive_exp)}`}</span>
                 </span>
               </div>
-              <div className="opt-predicted-cell" data-label="到達予測">{`Lv${row.current_bond_level} ⇒ Lv${row.predicted_level}`}</div>
+              <div className="opt-predicted-cell" data-label="到達予測">
+                {shortageExp > 0 ? (
+                  <span
+                    className="opt-predicted-shortage"
+                    tabIndex={0}
+                  >
+                    <span className="opt-predicted-text">{predictedLabel}</span>
+                    <span className="opt-shortage-card" role="tooltip">
+                      <span className="opt-shortage-card-title">目標まで不足</span>
+                      <span className="opt-shortage-card-row">
+                        <span>必要EXP</span>
+                        <strong>{formatNumber(shortageExp)}</strong>
+                      </span>
+                      <span className="opt-shortage-card-row">
+                        <span>{SELECTABLE_BOX_LABEL}</span>
+                        <strong>{formatNumber(shortageBoxCount)}個分</strong>
+                      </span>
+                    </span>
+                  </span>
+                ) : (
+                  predictedLabel
+                )}
+              </div>
               <div className="opt-items-cell" data-label="配分内訳">
                 {row.allocated_items.length ? (
                   <div className="opt-items-grid">

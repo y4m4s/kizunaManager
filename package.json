@@ -6,6 +6,7 @@
     "dev": "node scripts/dev.mjs",
     "build": "npm --prefix frontend run build",
     "start": "node --no-warnings --experimental-strip-types scripts/start.mjs",
-    "lint": "npm --prefix frontend run lint"
+    "lint": "npm --prefix frontend run lint",
+    "test:backend": "node --no-warnings --experimental-strip-types --test backend/src/optimizer.test.ts"
   }
 }

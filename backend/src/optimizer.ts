@@ -432,6 +432,23 @@ type CompatibilityStat = {
 
 type CompatibilityStats = Record<number, CompatibilityStat>
 
+type AllocatedItem = ItemRecord & {
+  effect: string
+  effect_label: string
+  gained_exp: number
+}
+
+type ClassAssignment = {
+  count: number
+  item_id: number
+  state_index: number
+}
+
+type ClassRebalanceResult = {
+  assignments: ClassAssignment[]
+  stock: Record<number, number>
+}
+
 function canAllocateItemToPlan(
   planState: Partial<OptimizeStudentResult>,
   item: Partial<ItemRecord>,
@@ -590,14 +607,25 @@ function bestAlternativeMetrics(
 
 function appendAllocation(
   planState: OptimizeStudentResult,
-  item: ItemRecord & { effect: string; effect_label: string; gained_exp: number },
+  item: AllocatedItem,
 ): void {
+  appendAllocationCount(planState, item, 1)
+}
+
+function appendAllocationCount(
+  planState: OptimizeStudentResult,
+  item: AllocatedItem,
+  count: number,
+): void {
+  if (count <= 0) {
+    return
+  }
   const existing = planState.allocated_items.find(
     (allocation) => allocation.item_id === item.id && allocation.effect === item.effect,
   )
   if (existing) {
-    existing.count += 1
-    existing.total_exp += item.gained_exp
+    existing.count += count
+    existing.total_exp += item.gained_exp * count
     return
   }
   const allocation: AllocationRecord = {
@@ -606,11 +634,11 @@ function appendAllocation(
     icon_path: item.icon_path,
     rarity: item.rarity,
     gift_kind: item.gift_kind,
-    count: 1,
+    count,
     effect: item.effect,
     effect_label: item.effect_label,
     exp_per_item: item.gained_exp,
-    total_exp: item.gained_exp,
+    total_exp: item.gained_exp * count,
   }
   planState.allocated_items.push(allocation)
 }
@@ -786,7 +814,7 @@ function pickNextGlobalCandidate(
 function applyCandidate(
   candidate: {
     plan_state: OptimizeStudentResult
-    item: ItemRecord & { effect: string; effect_label: string; gained_exp: number }
+    item: AllocatedItem
   },
   stock: Record<number, number>,
 ): void {
@@ -796,6 +824,334 @@ function applyCandidate(
   planState.allocated_exp += item.gained_exp
   planState.remaining_exp = Math.max(0, Number(planState.remaining_exp || 0) - item.gained_exp)
   appendAllocation(planState, item)
+}
+
+function cloneStock(stock: Record<number, number>): Record<number, number> {
+  return Object.fromEntries(
+    Object.entries(stock).map(([itemId, quantity]) => [Number(itemId), Number(quantity)]),
+  ) as Record<number, number>
+}
+
+function replaceStock(
+  targetStock: Record<number, number>,
+  nextStock: Record<number, number>,
+): void {
+  for (const itemId of Object.keys(targetStock)) {
+    delete targetStock[Number(itemId)]
+  }
+  for (const [itemId, quantity] of Object.entries(nextStock)) {
+    const normalizedQuantity = Number(quantity)
+    if (normalizedQuantity > 0) {
+      targetStock[Number(itemId)] = normalizedQuantity
+    }
+  }
+}
+
+function allocationClassKey(effect: string, expPerItem: number): string {
+  return `${effect}:${expPerItem}`
+}
+
+function allocationMatchesClass(allocation: AllocationRecord, classKey: string): boolean {
+  return allocationClassKey(allocation.effect, allocation.exp_per_item) === classKey
+}
+
+function evaluatedItemForClass(
+  planState: OptimizeStudentResult,
+  itemId: number,
+  classKey: string,
+  itemsById: Record<number, ItemRecord>,
+  evaluations: EvaluationCache,
+): AllocatedItem | null {
+  const item = itemsById[itemId]
+  const evaluation = evaluations[planState.student_id]?.[itemId]
+  if (!item ||
+    !evaluation?.visible ||
+    !canAllocateItemToPlan(planState, item) ||
+    allocationClassKey(evaluation.effect, evaluation.gained_exp) !== classKey) {
+    return null
+  }
+  return {
+    ...item,
+    effect: evaluation.effect,
+    effect_label: evaluation.effect_label,
+    gained_exp: evaluation.gained_exp,
+  }
+}
+
+function classItemCost(
+  itemId: number,
+  item: ItemRecord,
+  compatibleStates: OptimizeStudentResult[],
+  evaluations: EvaluationCache,
+  classKey: string,
+): [number, number, number, string] {
+  let compatibleCount = 0
+  let priorityWeight = 0
+  for (const state of compatibleStates) {
+    const evaluation = evaluations[state.student_id]?.[itemId]
+    if (evaluation && allocationClassKey(evaluation.effect, evaluation.gained_exp) === classKey) {
+      compatibleCount += 1
+      priorityWeight += PRIORITY_ORDER[String(state.priority || 'priority')] || 0
+    }
+  }
+  return [
+    isSelectableBox(item) ? 1 : 0,
+    isBouquet(item) ? 1 : 0,
+    compatibleCount + priorityWeight,
+    String(item.name || `Item ${itemId}`),
+  ]
+}
+
+function compareClassItemCosts(
+  left: [number, number, number, string],
+  right: [number, number, number, string],
+): number {
+  for (let index = 0; index < left.length; index += 1) {
+    const leftValue = left[index]
+    const rightValue = right[index]
+    if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+      if (leftValue !== rightValue) {
+        return leftValue - rightValue
+      }
+    } else if (String(leftValue) !== String(rightValue)) {
+      return String(leftValue).localeCompare(String(rightValue), 'ja')
+    }
+  }
+  return 0
+}
+
+function solveEquivalentClassRebalance(
+  states: OptimizeStudentResult[],
+  classKey: string,
+  stock: Record<number, number>,
+  itemsById: Record<number, ItemRecord>,
+  evaluations: EvaluationCache,
+): ClassRebalanceResult | null {
+  const demandByStateIndex = new Map<number, number>()
+  const supplyStock = cloneStock(stock)
+
+  for (let stateIndex = 0; stateIndex < states.length; stateIndex += 1) {
+    for (const allocation of states[stateIndex].allocated_items) {
+      if (!allocationMatchesClass(allocation, classKey)) {
+        continue
+      }
+      demandByStateIndex.set(
+        stateIndex,
+        (demandByStateIndex.get(stateIndex) || 0) + allocation.count,
+      )
+      supplyStock[allocation.item_id] = Number(supplyStock[allocation.item_id] || 0) + allocation.count
+    }
+  }
+
+  const demandEntries = [...demandByStateIndex.entries()].filter(([, count]) => count > 0)
+  if (!demandEntries.length) {
+    return null
+  }
+
+  const itemEntries = Object.entries(supplyStock)
+    .map(([itemId, quantity]) => [Number(itemId), Number(quantity)] as const)
+    .filter(([itemId, quantity]) => quantity > 0 && Boolean(itemsById[itemId]))
+  const compatibleItemsByStateIndex = new Map<number, Array<{
+    item: ItemRecord
+    item_id: number
+  }>>()
+
+  for (const [stateIndex] of demandEntries) {
+    const state = states[stateIndex]
+    const compatibleItems = itemEntries.flatMap(([itemId]) => {
+      const item = itemsById[itemId]
+      return evaluatedItemForClass(state, itemId, classKey, itemsById, evaluations)
+        ? [{ item, item_id: itemId }]
+        : []
+    })
+    if (!compatibleItems.length) {
+      return null
+    }
+    compatibleItemsByStateIndex.set(stateIndex, compatibleItems)
+  }
+
+  const remainingStock = cloneStock(supplyStock)
+  const ownerByItemId = new Map<number, number>()
+  const assignments: ClassAssignment[] = []
+  const compatibleStates = demandEntries.map(([stateIndex]) => states[stateIndex])
+
+  function findExactUnownedSubset(
+    candidates: Array<{ item: ItemRecord; item_id: number }>,
+    target: number,
+  ): Array<{ item: ItemRecord; item_id: number }> | null {
+    if (target <= 0) {
+      return []
+    }
+    const orderedCandidates = [...candidates].sort((left, right) =>
+      compareClassItemCosts(
+        classItemCost(left.item_id, left.item, compatibleStates, evaluations, classKey),
+        classItemCost(right.item_id, right.item, compatibleStates, evaluations, classKey),
+      ) || left.item.name.localeCompare(right.item.name, 'ja'),
+    )
+    const dp = new Map<number, number[]>()
+    dp.set(0, [])
+    for (const candidate of orderedCandidates) {
+      const quantity = Number(remainingStock[candidate.item_id] || 0)
+      if (quantity <= 0 || quantity > target || ownerByItemId.has(candidate.item_id)) {
+        continue
+      }
+      for (const [sum, itemIds] of [...dp.entries()].sort((left, right) => right[0] - left[0])) {
+        const nextSum = sum + quantity
+        if (nextSum > target || dp.has(nextSum)) {
+          continue
+        }
+        const nextItemIds = [...itemIds, candidate.item_id]
+        if (nextSum === target) {
+          return nextItemIds.map((itemId) => ({
+            item: itemsById[itemId],
+            item_id: itemId,
+          }))
+        }
+        dp.set(nextSum, nextItemIds)
+      }
+    }
+    return null
+  }
+
+  const orderedDemandEntries = [...demandEntries].sort((left, right) => {
+    const leftState = states[left[0]]
+    const rightState = states[right[0]]
+    const compatibleDiff =
+      (compatibleItemsByStateIndex.get(left[0])?.length || 0) -
+      (compatibleItemsByStateIndex.get(right[0])?.length || 0)
+    if (compatibleDiff !== 0) {
+      return compatibleDiff
+    }
+    const priorityDiff =
+      (PRIORITY_ORDER[String(rightState.priority || 'priority')] || 0) -
+      (PRIORITY_ORDER[String(leftState.priority || 'priority')] || 0)
+    if (priorityDiff !== 0) {
+      return priorityDiff
+    }
+    if (left[1] !== right[1]) {
+      return left[1] - right[1]
+    }
+    return leftState.student_name.localeCompare(rightState.student_name, 'ja')
+  })
+
+  for (const [stateIndex, demand] of orderedDemandEntries) {
+    const state = states[stateIndex]
+    let remainingDemand = demand
+    while (remainingDemand > 0) {
+      const candidates = (compatibleItemsByStateIndex.get(stateIndex) || [])
+        .filter(({ item_id: itemId }) => Number(remainingStock[itemId] || 0) > 0)
+      if (!candidates.length) {
+        return null
+      }
+
+      const exactSubset = findExactUnownedSubset(candidates, remainingDemand)
+      if (exactSubset?.length) {
+        for (const selected of exactSubset) {
+          const count = Number(remainingStock[selected.item_id] || 0)
+          ownerByItemId.set(selected.item_id, stateIndex)
+          remainingStock[selected.item_id] = 0
+          remainingDemand -= count
+          assignments.push({
+            count,
+            item_id: selected.item_id,
+            state_index: stateIndex,
+          })
+        }
+        continue
+      }
+
+      candidates.sort((left, right) => {
+        const ownerRank = (itemId: number): number => {
+          const owner = ownerByItemId.get(itemId)
+          if (owner === stateIndex) {
+            return 0
+          }
+          return owner === undefined ? 1 : 2
+        }
+        const ownerDiff = ownerRank(left.item_id) - ownerRank(right.item_id)
+        if (ownerDiff !== 0) {
+          return ownerDiff
+        }
+
+        const fitRank = (quantity: number): [number, number] =>
+          quantity >= remainingDemand
+            ? [0, quantity - remainingDemand]
+            : [1, -quantity]
+        const leftFit = fitRank(Number(remainingStock[left.item_id] || 0))
+        const rightFit = fitRank(Number(remainingStock[right.item_id] || 0))
+        if (leftFit[0] !== rightFit[0]) {
+          return leftFit[0] - rightFit[0]
+        }
+        if (leftFit[1] !== rightFit[1]) {
+          return leftFit[1] - rightFit[1]
+        }
+
+        return compareClassItemCosts(
+          classItemCost(left.item_id, left.item, compatibleStates, evaluations, classKey),
+          classItemCost(right.item_id, right.item, compatibleStates, evaluations, classKey),
+        )
+      })
+
+      const selected = candidates[0]
+      const count = Math.min(Number(remainingStock[selected.item_id] || 0), remainingDemand)
+      if (!ownerByItemId.has(selected.item_id)) {
+        ownerByItemId.set(selected.item_id, stateIndex)
+      }
+      remainingStock[selected.item_id] = Number(remainingStock[selected.item_id] || 0) - count
+      remainingDemand -= count
+      assignments.push({
+        count,
+        item_id: selected.item_id,
+        state_index: stateIndex,
+      })
+    }
+  }
+
+  return {
+    assignments,
+    stock: remainingStock,
+  }
+}
+
+function rebalanceEquivalentAllocationClasses(
+  states: OptimizeStudentResult[],
+  stock: Record<number, number>,
+  itemsById: Record<number, ItemRecord>,
+  evaluations: EvaluationCache,
+): void {
+  const classKeys = new Set<string>()
+  for (const state of states) {
+    for (const allocation of state.allocated_items) {
+      classKeys.add(allocationClassKey(allocation.effect, allocation.exp_per_item))
+    }
+  }
+
+  for (const classKey of classKeys) {
+    const result = solveEquivalentClassRebalance(states, classKey, stock, itemsById, evaluations)
+    if (!result) {
+      continue
+    }
+
+    for (const state of states) {
+      state.allocated_items = state.allocated_items.filter(
+        (allocation) => !allocationMatchesClass(allocation, classKey),
+      )
+    }
+    for (const assignment of result.assignments) {
+      const state = states[assignment.state_index]
+      const item = evaluatedItemForClass(
+        state,
+        assignment.item_id,
+        classKey,
+        itemsById,
+        evaluations,
+      )
+      if (item) {
+        appendAllocationCount(state, item, assignment.count)
+      }
+    }
+    replaceStock(stock, result.stock)
+  }
 }
 
 function allocateStateGroup(
@@ -915,6 +1271,7 @@ export function optimizeAllocation(
   if (includeSemiPriority) {
     allocateStateGroup(semiPriorityStates, stock, itemsById, evaluations)
   }
+  rebalanceEquivalentAllocationClasses(states, stock, itemsById, evaluations)
   let totalRequired = 0
   let totalAllocated = 0
   let totalPassive = 0
