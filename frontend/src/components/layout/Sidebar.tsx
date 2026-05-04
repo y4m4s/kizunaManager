@@ -1,5 +1,6 @@
 ﻿import { useState } from 'react'
 import { APP_TITLE, NAV_ITEMS } from '../../constants'
+import { effectIconUrl } from '../../lib/uiAssets'
 import type { MasterStatus } from '../../types'
 
 type ActiveTab = (typeof NAV_ITEMS)[number]['key']
@@ -12,6 +13,13 @@ type SidebarProps = {
   onSelect: (tab: ActiveTab) => void
   onUpdateMaster: () => void
 }
+
+const GIFT_EXP_ROWS = [
+  { effect: 'extra_large', label: '特大', orange: 80, purple: 240 },
+  { effect: 'large', label: '大', orange: 60, purple: 180 },
+  { effect: 'medium', label: '中', orange: 40, purple: 120 },
+  { effect: 'small', label: '小', orange: 20, purple: null },
+] as const
 
 function formatTimestamp(value: string): string {
   if (!value) {
@@ -100,20 +108,51 @@ export function Sidebar({
           <strong>マスターデータ</strong>
           <dl>
             <div>
-              <dt>取得元</dt>
-              <dd>{masterStatus?.source || 'loading...'}</dd>
-            </div>
-            <div>
-              <dt>生徒 / 贈り物</dt>
-              <dd>
-                {masterStatus?.counts.students ?? '-'} / {masterStatus?.counts.items ?? '-'}
-              </dd>
-            </div>
-            <div>
               <dt>更新日時</dt>
               <dd>{formatTimestamp(masterStatus?.refreshed_at || '')}</dd>
             </div>
           </dl>
+        </div>
+
+        <div className="sidebar-exp-table card-shell">
+          <strong>贈り物EXP</strong>
+          <table aria-label="橙・紫贈り物EXP">
+            <thead>
+              <tr>
+                <th scope="col">効果</th>
+                <th scope="col">橙</th>
+                <th scope="col">紫</th>
+              </tr>
+            </thead>
+            <tbody>
+              {GIFT_EXP_ROWS.map((row) => {
+                const iconSrc = effectIconUrl(row.effect)
+                return (
+                  <tr key={row.effect}>
+                    <th scope="row">
+                      <span className="sidebar-exp-effect">
+                        {iconSrc ? (
+                          <img
+                            alt=""
+                            aria-hidden="true"
+                            className="sidebar-exp-icon"
+                            src={iconSrc}
+                          />
+                        ) : (
+                          <span aria-hidden="true" className="sidebar-exp-icon-placeholder" />
+                        )}
+                        <span>{row.label}</span>
+                      </span>
+                    </th>
+                    <td>{row.orange}</td>
+                    <td className={row.purple === null ? 'sidebar-exp-empty' : undefined}>
+                      {row.purple ?? '-'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </aside>

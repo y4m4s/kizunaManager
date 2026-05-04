@@ -1505,13 +1505,15 @@
   justify-content: flex-start;
 }
 
-.sidebar-status {
+.sidebar-status,
+.sidebar-exp-table {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.sidebar-status strong {
+.sidebar-status strong,
+.sidebar-exp-table strong {
   color: #203d5a;
   display: block;
   margin-bottom: 10px;
@@ -1532,6 +1534,59 @@
   color: #203d5a;
   font-size: 12px;
   font-weight: 700;
+}
+
+.sidebar-exp-table table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.sidebar-exp-table th,
+.sidebar-exp-table td {
+  border-top: 1px solid #e3edf8;
+  color: #203d5a;
+  font-size: 11px;
+  padding: 6px 2px;
+  text-align: right;
+}
+
+.sidebar-exp-table thead th {
+  border-top: none;
+  color: #6f839c;
+  font-weight: 700;
+}
+
+.sidebar-exp-table th:first-child,
+.sidebar-exp-table td:first-child {
+  text-align: left;
+}
+
+.sidebar-exp-table tbody th,
+.sidebar-exp-table tbody td {
+  font-weight: 700;
+}
+
+.sidebar-exp-effect {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.sidebar-exp-icon,
+.sidebar-exp-icon-placeholder {
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 15px;
+  width: 15px;
+}
+
+.sidebar-exp-icon {
+  object-fit: contain;
+}
+
+.sidebar-exp-empty {
+  color: #9aaabd !important;
 }
 
 .sidebar-bottom {
