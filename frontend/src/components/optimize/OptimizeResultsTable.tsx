@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { assetUrl } from '../../api'
 import { OPTIMIZE_PRIORITY_OPTIONS } from '../../constants'
 import { formatNumber } from '../../lib/bond'
@@ -19,6 +20,13 @@ type OptimizeResultsTableProps = {
 const SELECTABLE_BOX_ITEM_ID = -1001
 const SELECTABLE_BOX_LABEL = '選択式ボックス'
 const SELECTABLE_BOX_EXP = 60
+
+type PrioritySelectProps = {
+  disabled: boolean
+  studentName: string
+  value: PriorityKey
+  onChange: (priority: PriorityKey) => void
+}
 
 function isBouquetDisplayItem(
   item: { item_name?: string; gift_kind?: string },
@@ -99,6 +107,173 @@ function sortGiftDisplayItems<T extends { item_id: number; item_name: string; gi
   })
 }
 
+function OptimizePrioritySelect({
+  disabled,
+  onChange,
+  studentName,
+  value,
+}: PrioritySelectProps) {
+  const [open, setOpen] = useState(false)
+  const listboxId = useId()
+  const rootRef = useRef<HTMLSpanElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const optionRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const selectedOption =
+    OPTIMIZE_PRIORITY_OPTIONS.find((option) => option.value === value) ?? OPTIMIZE_PRIORITY_OPTIONS[0]
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const selectedOptionButton = optionRefs.current[value]
+    selectedOptionButton?.focus()
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [open, value])
+
+  function closeAndFocusButton() {
+    setOpen(false)
+    window.requestAnimationFrame(() => buttonRef.current?.focus())
+  }
+
+  function selectPriority(nextPriority: PriorityKey) {
+    if (nextPriority !== value) {
+      onChange(nextPriority)
+    }
+    closeAndFocusButton()
+  }
+
+  function focusOption(index: number) {
+    const option = OPTIMIZE_PRIORITY_OPTIONS[index]
+    if (!option) {
+      return
+    }
+    optionRefs.current[option.value]?.focus()
+  }
+
+  function handleButtonKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (disabled) {
+      return
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      setOpen(true)
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setOpen(false)
+    }
+  }
+
+  function handleOptionKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+    priority: PriorityKey,
+  ) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      focusOption((index + 1) % OPTIMIZE_PRIORITY_OPTIONS.length)
+      return
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      focusOption((index - 1 + OPTIMIZE_PRIORITY_OPTIONS.length) % OPTIMIZE_PRIORITY_OPTIONS.length)
+      return
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault()
+      focusOption(0)
+      return
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault()
+      focusOption(OPTIMIZE_PRIORITY_OPTIONS.length - 1)
+      return
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      selectPriority(priority)
+      return
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeAndFocusButton()
+    }
+  }
+
+  return (
+    <span
+      ref={rootRef}
+      className={`opt-priority-select-shell${open ? ' open' : ''}`}
+      data-priority={value}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setOpen(false)
+        }
+      }}
+    >
+      <button
+        ref={buttonRef}
+        aria-controls={open ? listboxId : undefined}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={`${studentName} の優先度`}
+        className="opt-priority-select"
+        disabled={disabled}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={handleButtonKeyDown}
+      >
+        {selectedOption.label}
+      </button>
+
+      {open ? (
+        <span
+          id={listboxId}
+          aria-label={`${studentName} の優先度`}
+          className="opt-priority-menu"
+          role="listbox"
+        >
+          {OPTIMIZE_PRIORITY_OPTIONS.map((option, index) => (
+            <button
+              key={option.value}
+              ref={(element) => {
+                optionRefs.current[option.value] = element
+              }}
+              aria-selected={option.value === value}
+              className="opt-priority-option"
+              data-priority={option.value}
+              role="option"
+              tabIndex={option.value === value ? 0 : -1}
+              type="button"
+              onClick={() => selectPriority(option.value)}
+              onKeyDown={(event) => handleOptionKeyDown(event, index, option.value)}
+            >
+              <span className="opt-priority-option-dot" />
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 export function OptimizeResultsTable({
   fallbackItemsById,
   onPriorityChange,
@@ -120,8 +295,7 @@ export function OptimizeResultsTable({
     <section className="card-shell optimize-results">
       <div className="optimize-table-head optimize-table-row">
         <div>生徒</div>
-        <div>誕生日</div>
-        <div>あと</div>
+        <div>誕生日まで</div>
         <div>優先度</div>
         <div>獲得EXP</div>
         <div>到達予測</div>
@@ -132,12 +306,25 @@ export function OptimizeResultsTable({
         {result.results.map((row) => {
           const student = studentsById[row.student_id]
           const birthday = student?.birthday || row.birthday || '-'
-          const daysLabel = birthday === '-' ? '-' : `あと${row.days_until_birthday}日`
+          const hasBirthday = birthday !== '-'
+          const daysUntilBirthday = Number(row.days_until_birthday || 0)
+          const daysLabel = hasBirthday
+            ? daysUntilBirthday === 0
+              ? '今日'
+              : `あと${formatNumber(daysUntilBirthday)}日`
+            : '未設定'
+          const birthdayTone = !hasBirthday
+            ? ' empty'
+            : daysUntilBirthday === 0
+              ? ' today'
+              : daysUntilBirthday <= 30
+                ? ' soon'
+                : ''
           const shortageExp = Math.max(0, Number(row.remaining_exp || 0))
           const shortageBoxCount = Math.ceil(shortageExp / SELECTABLE_BOX_EXP)
           const predictedLabel = `Lv${row.current_bond_level} ⇒ Lv${row.predicted_level}`
           return (
-            <div key={row.student_id} className="optimize-table-row">
+            <div key={row.student_id} className="optimize-table-row" data-priority={row.priority}>
               <div className="opt-student-cell" data-label="生徒">
                 <IconThumb
                   filePath={student?.icon_path}
@@ -147,21 +334,17 @@ export function OptimizeResultsTable({
                 />
                 <strong>{row.student_name}</strong>
               </div>
-              <div className="opt-birthday-cell" data-label="誕生日">{birthday}</div>
-              <div className="opt-days-cell" data-label="あと">{daysLabel}</div>
+              <div className="opt-birthday-cell" data-label="誕生日まで">
+                <span className={`opt-birthday-days${birthdayTone}`}>{daysLabel}</span>
+                <span className="opt-birthday-date">{hasBirthday ? birthday : '誕生日なし'}</span>
+              </div>
               <div className="opt-priority-cell" data-label="優先度">
-                <select
-                  className="select-input compact opt-priority-select"
+                <OptimizePrioritySelect
                   disabled={prioritySavingStudentId === row.student_id}
+                  studentName={row.student_name}
                   value={row.priority}
-                  onChange={(event) => onPriorityChange(row, event.target.value as PriorityKey)}
-                >
-                  {OPTIMIZE_PRIORITY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(priority) => onPriorityChange(row, priority)}
+                />
               </div>
               <div className="opt-allocated-cell" data-label="獲得EXP">
                 <span className="opt-exp-breakdown">

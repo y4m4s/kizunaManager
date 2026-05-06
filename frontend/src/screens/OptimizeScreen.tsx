@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { PRIORITY_SORT_ORDER } from '../constants'
+import { formatNumber } from '../lib/bond'
 import type { Item, OptimizeResult, PriorityKey, Student } from '../types'
 import { OptimizeResultsTable } from '../components/optimize/OptimizeResultsTable'
 
@@ -14,6 +15,8 @@ const LEGACY_DAILY_CAFE_TAPS_KEY = 'optimize:dailyCafeTaps'
 const DAILY_TOP_PRIORITY_CAFE_TAPS_KEY = 'optimize:dailyTopPriorityCafeTaps'
 const DAILY_OTHER_CAFE_TAPS_KEY = 'optimize:dailyOtherCafeTaps'
 const DAILY_SCHEDULES_KEY = 'optimize:dailySchedules'
+const CAFE_TAP_EXP = 15
+const SCHEDULE_EXPECTED_EXP = 31.25
 
 function validPersistedCount(value: string | null): string | null {
   return value && /^\d+$/.test(value) ? value : null
@@ -49,6 +52,16 @@ function parseCountInput(value: string): number {
   return parsed
 }
 
+function formatExpPreview(value: number): string {
+  if (Number.isInteger(value)) {
+    return formatNumber(value)
+  }
+  return new Intl.NumberFormat('ja-JP', {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+  }).format(value)
+}
+
 export function OptimizeScreen({
   bridgeReady,
   onDataChanged,
@@ -68,6 +81,11 @@ export function OptimizeScreen({
   const [loading, setLoading] = useState(true)
   const [optimizing, setOptimizing] = useState(false)
   const [prioritySavingStudentId, setPrioritySavingStudentId] = useState<number | null>(null)
+  const dailyScheduleExp = parseCountInput(dailySchedules) * SCHEDULE_EXPECTED_EXP
+  const topPriorityDailyExp =
+    parseCountInput(dailyTopPriorityCafeTaps) * CAFE_TAP_EXP + dailyScheduleExp
+  const otherPriorityDailyExp =
+    parseCountInput(dailyOtherCafeTaps) * CAFE_TAP_EXP + dailyScheduleExp
 
   useEffect(() => {
     let disposed = false
@@ -207,57 +225,83 @@ export function OptimizeScreen({
 
   return (
     <div className="screen-stack">
-      <section className="card-shell">
-        <div className="section-head compact-head">
-          <div>
-            <h3>誕生日までの自然加算</h3>
-            <p>
-              今日から次の誕生日までの残り日数を使って、優先度別のカフェタップとスケジュール分の絆EXPを見込みます。
-            </p>
+      <section className="card-shell optimize-passive-card">
+        <div className="optimize-passive-head">
+          <div className="optimize-passive-copy">
+            <h3>誕生日までの日課見込み</h3>
+            <p>次の誕生日までの残り日数に、カフェタップとスケジュール分の絆EXPを加味します。</p>
+          </div>
+
+          <div className="optimize-passive-summary" aria-label="1日あたりの自然獲得EXP">
+            <div className="optimize-passive-stat top-priority">
+              <span>最優先</span>
+              <strong>{`+${formatExpPreview(topPriorityDailyExp)}`}</strong>
+              <small>EXP / 日</small>
+            </div>
+            <div className="optimize-passive-stat normal-priority">
+              <span>優先・準優先</span>
+              <strong>{`+${formatExpPreview(otherPriorityDailyExp)}`}</strong>
+              <small>EXP / 日</small>
+            </div>
           </div>
         </div>
 
-        <div className="optimize-settings-grid">
-          <label className="inline-field">
-            <span>1日のカフェタップ回数（最優先）</span>
-            <input
-              className="text-input compact"
-              inputMode="numeric"
-              placeholder="0"
-              type="text"
-              value={dailyTopPriorityCafeTaps}
-              onChange={(event) =>
-                setDailyTopPriorityCafeTaps(sanitizeCountInput(event.target.value))
-              }
-            />
+        <div className="optimize-passive-controls">
+          <label className="optimize-passive-field top-priority">
+            <span className="optimize-passive-field-label">カフェタップ</span>
+            <strong>最優先</strong>
+            <span className="optimize-passive-input-wrap">
+              <input
+                className="text-input compact optimize-passive-input"
+                inputMode="numeric"
+                placeholder="0"
+                type="text"
+                value={dailyTopPriorityCafeTaps}
+                onChange={(event) =>
+                  setDailyTopPriorityCafeTaps(sanitizeCountInput(event.target.value))
+                }
+              />
+              <span>回 / 日</span>
+            </span>
           </label>
-          <label className="inline-field">
-            <span>1日のカフェタップ回数（それ以外）</span>
-            <input
-              className="text-input compact"
-              inputMode="numeric"
-              placeholder="0"
-              type="text"
-              value={dailyOtherCafeTaps}
-              onChange={(event) => setDailyOtherCafeTaps(sanitizeCountInput(event.target.value))}
-            />
+          <label className="optimize-passive-field normal-priority">
+            <span className="optimize-passive-field-label">カフェタップ</span>
+            <strong>優先・準優先</strong>
+            <span className="optimize-passive-input-wrap">
+              <input
+                className="text-input compact optimize-passive-input"
+                inputMode="numeric"
+                placeholder="0"
+                type="text"
+                value={dailyOtherCafeTaps}
+                onChange={(event) => setDailyOtherCafeTaps(sanitizeCountInput(event.target.value))}
+              />
+              <span>回 / 日</span>
+            </span>
           </label>
-          <label className="inline-field">
-            <span>1日のスケジュール回数</span>
-            <input
-              className="text-input compact"
-              inputMode="numeric"
-              placeholder="0"
-              type="text"
-              value={dailySchedules}
-              onChange={(event) => setDailySchedules(sanitizeCountInput(event.target.value))}
-            />
+          <label className="optimize-passive-field schedules">
+            <span className="optimize-passive-field-label">スケジュール</span>
+            <strong>共通</strong>
+            <span className="optimize-passive-input-wrap">
+              <input
+                className="text-input compact optimize-passive-input"
+                inputMode="numeric"
+                placeholder="0"
+                type="text"
+                value={dailySchedules}
+                onChange={(event) => setDailySchedules(sanitizeCountInput(event.target.value))}
+              />
+              <span>回 / 日</span>
+            </span>
           </label>
         </div>
 
-        <p className="optimize-settings-note">
-          カフェタップは最優先とそれ以外で別々に反映します。1回あたり15、スケジュールは Rank 12 想定で通常+25、25%でボーナス+25 の期待値で計算します。
-        </p>
+        <div className="optimize-passive-formula" aria-label="自然獲得EXPの計算条件">
+          <strong>計算条件</strong>
+          <span>{`カフェ +${CAFE_TAP_EXP} EXP/回`}</span>
+          <span>{`スケジュール +${formatExpPreview(SCHEDULE_EXPECTED_EXP)} EXP/回`}</span>
+          <span>Rank 12・ボーナス期待値込み</span>
+        </div>
       </section>
 
       <section className="card-shell">
