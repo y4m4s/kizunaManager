@@ -333,6 +333,7 @@ export function OptimizeScreen({
 
       <OptimizeResultsTable
         fallbackItemsById={Object.fromEntries(items.map((item) => [item.id, item]))}
+        giftRefreshKey={refreshToken}
         onPriorityChange={(row, priority) =>
           void handleResultPriorityChange(row, priority)
         }

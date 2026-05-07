@@ -5,9 +5,11 @@ import { formatNumber } from '../../lib/bond'
 import { effectIconUrl, SELECTABLE_BOX_ICON_URL } from '../../lib/uiAssets'
 import type { Item, OptimizeResult, PriorityKey, Student } from '../../types'
 import { IconThumb } from '../common/IconThumb'
+import { StudentGiftHoverCard } from '../common/StudentGiftHoverCard'
 
 type OptimizeResultsTableProps = {
   fallbackItemsById: Record<number, Item>
+  giftRefreshKey?: number | string
   onPriorityChange: (
     row: OptimizeResult['results'][number],
     priority: PriorityKey,
@@ -276,6 +278,7 @@ function OptimizePrioritySelect({
 
 export function OptimizeResultsTable({
   fallbackItemsById,
+  giftRefreshKey,
   onPriorityChange,
   prioritySavingStudentId,
   result,
@@ -326,13 +329,13 @@ export function OptimizeResultsTable({
           return (
             <div key={row.student_id} className="optimize-table-row" data-priority={row.priority}>
               <div className="opt-student-cell" data-label="生徒">
-                <IconThumb
-                  filePath={student?.icon_path}
-                  label={row.student_name}
-                  size={34}
-                  tone="student"
+                <StudentGiftHoverCard
+                  iconPath={student?.icon_path}
+                  iconSize={34}
+                  refreshKey={giftRefreshKey}
+                  studentId={row.student_id}
+                  studentName={row.student_name}
                 />
-                <strong>{row.student_name}</strong>
               </div>
               <div className="opt-birthday-cell" data-label="誕生日まで">
                 <span className={`opt-birthday-days${birthdayTone}`}>{daysLabel}</span>

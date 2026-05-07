@@ -805,6 +805,208 @@
   background: #f5eaff;
 }
 
+.student-gift-hover {
+  cursor: default;
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  outline: none;
+  overflow: visible;
+  position: relative;
+}
+
+.student-gift-hover:hover,
+.student-gift-hover:focus-within {
+  z-index: 120;
+}
+
+.student-gift-hover-trigger {
+  align-items: center;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 10px;
+  margin: -6px -10px;
+  max-width: calc(100% + 20px);
+  min-height: 46px;
+  min-width: 0;
+  padding: 6px 10px;
+}
+
+.student-gift-hover-name {
+  color: inherit;
+  display: block;
+  font-weight: 800;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-gift-hover:hover .student-gift-hover-trigger {
+  background: #f1f7ff;
+}
+
+.student-gift-hover:focus-visible .student-gift-hover-trigger {
+  background: #f1f7ff;
+  box-shadow: 0 0 0 3px rgba(75, 134, 255, 0.18);
+}
+
+.student-gift-hover-card {
+  background: #ffffff;
+  border: 1px solid #cddbea;
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgba(25, 54, 94, 0.18);
+  color: #26384c;
+  display: grid;
+  gap: 10px;
+  left: 0;
+  max-width: min(920px, calc(100vw - 24px));
+  min-width: min(220px, calc(100vw - 24px));
+  opacity: 0;
+  padding: 12px;
+  pointer-events: auto;
+  position: fixed;
+  text-align: left;
+  top: 0;
+  visibility: hidden;
+  white-space: normal;
+  width: max-content;
+  z-index: 200;
+}
+
+.student-gift-hover-card.ready {
+  opacity: 1;
+  visibility: visible;
+}
+
+.student-gift-hover-card::before {
+  background: #ffffff;
+  content: "";
+  height: 10px;
+  left: var(--student-gift-card-arrow-left, 18px);
+  position: absolute;
+  transform: rotate(45deg);
+  width: 10px;
+}
+
+.student-gift-hover-card[data-placement="bottom"]::before {
+  border-left: 1px solid #cddbea;
+  border-top: 1px solid #cddbea;
+  top: -6px;
+}
+
+.student-gift-hover-card[data-placement="top"]::before {
+  border-bottom: 1px solid #cddbea;
+  border-right: 1px solid #cddbea;
+  bottom: -6px;
+}
+
+.student-gift-card-head,
+.student-gift-card-group-title {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.student-gift-card-head {
+  justify-content: space-between;
+}
+
+.student-gift-card-head strong {
+  color: #143152;
+  font-size: 13px;
+}
+
+.student-gift-card-head span {
+  color: #6f839b;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.student-gift-card-state {
+  color: #70849c;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 2px;
+}
+
+.student-gift-card-groups {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  overflow: visible;
+}
+
+.student-gift-card-group {
+  display: grid;
+  gap: 7px;
+  max-width: 100%;
+  width: max-content;
+}
+
+.student-gift-card-group-title {
+  color: #38536f;
+}
+
+.student-gift-card-group-title strong {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.student-gift-card-group-title span {
+  color: #8294aa;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.student-gift-card-effect-icon {
+  display: block;
+  object-fit: contain;
+}
+
+.student-gift-card-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  max-width: 100%;
+}
+
+.student-gift-card-item {
+  align-items: center;
+  background: #fff8dd;
+  border: 1px solid #f7df9f;
+  border-radius: 8px;
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  padding: 4px;
+  position: relative;
+  width: 44px;
+}
+
+.student-gift-card-item.rarity-ssr {
+  background: #f5eaff;
+  border-color: #dfc7ff;
+}
+
+.student-gift-card-qty {
+  background: #13314e;
+  border-radius: 999px;
+  bottom: -5px;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  min-width: 20px;
+  padding: 3px 5px;
+  position: absolute;
+  right: -5px;
+  text-align: center;
+}
+
 .result-cell-empty {
   min-height: 40px;
 }
@@ -854,9 +1056,11 @@
   display: flex;
   gap: 10px;
   min-width: 0;
+  overflow: visible;
 }
 
-.manage-row-student span {
+.manage-row-student > span:not(.student-gift-hover),
+.manage-row-student .student-gift-hover-name {
   font-weight: 700;
   min-width: 0;
   overflow: hidden;
@@ -1429,6 +1633,8 @@
   display: flex;
   gap: 10px;
   min-height: 82px;
+  min-width: 0;
+  overflow: visible;
 }
 
 .opt-items-cell {

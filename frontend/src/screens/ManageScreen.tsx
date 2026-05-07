@@ -734,6 +734,7 @@ export function ManageScreen({
                 <ManageRow
                   key={student.id}
                   draft={draft}
+                  giftRefreshKey={refreshToken}
                   requiredExpText={draft.targetLevel.trim() ? formatNumber(requiredExp) : '-'}
                   student={student}
                   onChange={(patch) => {

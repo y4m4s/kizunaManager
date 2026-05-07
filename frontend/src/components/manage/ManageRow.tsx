@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import type { PriorityKey, Student } from '../../types'
-import { IconThumb } from '../common/IconThumb'
+import { StudentGiftHoverCard } from '../common/StudentGiftHoverCard'
 import { daysUntilBirthday, formatBirthday } from '../../lib/birthday'
 
 type ManageDraft = {
@@ -11,6 +11,7 @@ type ManageDraft = {
 
 type ManageRowProps = {
   draft: ManageDraft
+  giftRefreshKey?: number | string
   requiredExpText: string
   student: Student
   onChange: (patch: Partial<ManageDraft>) => void
@@ -20,6 +21,7 @@ type ManageRowProps = {
 
 function ManageRowComponent({
   draft,
+  giftRefreshKey,
   requiredExpText,
   student,
   onChange,
@@ -36,8 +38,13 @@ function ManageRowComponent({
   return (
     <div className="manage-row">
       <div className="manage-row-student" data-label="生徒">
-        <IconThumb filePath={student.icon_path} label={student.name} size={38} tone="student" />
-        <span>{student.name}</span>
+        <StudentGiftHoverCard
+          iconPath={student.icon_path}
+          iconSize={38}
+          refreshKey={giftRefreshKey}
+          studentId={student.id}
+          studentName={student.name}
+        />
       </div>
 
       <div className="manage-row-birthday" data-label="誕生日">
@@ -125,6 +132,7 @@ function ManageRowComponent({
 function areEqual(prev: ManageRowProps, next: ManageRowProps): boolean {
   return (
     prev.requiredExpText === next.requiredExpText &&
+    prev.giftRefreshKey === next.giftRefreshKey &&
     prev.student.id === next.student.id &&
     prev.student.name === next.student.name &&
     prev.student.icon_path === next.student.icon_path &&
