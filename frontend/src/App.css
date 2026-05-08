@@ -1104,7 +1104,8 @@
 }
 
 .manage-row-field .text-input,
-.manage-row-field .select-input {
+.manage-row-field .select-input,
+.manage-row-field .opt-priority-select-shell {
   min-width: 0;
   width: 100%;
 }
@@ -1892,6 +1893,18 @@
   color: #7c3aed;
 }
 
+.opt-priority-select-shell[data-priority="defer"] {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.opt-priority-select-shell[data-priority="done"] {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #16a34a;
+}
+
 .opt-priority-select {
   align-items: center;
   background: transparent;
@@ -2016,6 +2029,24 @@
 .opt-priority-option[data-priority="semi_priority"]:hover,
 .opt-priority-option[data-priority="semi_priority"]:focus-visible {
   background: #f5f3ff;
+}
+
+.opt-priority-option[data-priority="defer"] {
+  color: #475569;
+}
+
+.opt-priority-option[data-priority="done"] {
+  color: #16a34a;
+}
+
+.opt-priority-option[data-priority="defer"]:hover,
+.opt-priority-option[data-priority="defer"]:focus-visible {
+  background: #f8fafc;
+}
+
+.opt-priority-option[data-priority="done"]:hover,
+.opt-priority-option[data-priority="done"]:focus-visible {
+  background: #f0fdf4;
 }
 
 .opt-items-grid {

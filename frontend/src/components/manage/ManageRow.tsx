@@ -1,5 +1,7 @@
 import { memo } from 'react'
+import { PRIORITY_OPTIONS } from '../../constants'
 import type { PriorityKey, Student } from '../../types'
+import { PrioritySelect } from '../common/PrioritySelect'
 import { StudentGiftHoverCard } from '../common/StudentGiftHoverCard'
 import { daysUntilBirthday, formatBirthday } from '../../lib/birthday'
 
@@ -90,26 +92,18 @@ function ManageRowComponent({
         />
       </label>
 
-      <label className="manage-row-field manage-row-priority" data-label="優先度">
-        <select
-          className="select-input compact"
+      <div className="manage-row-field manage-row-priority" data-label="優先度">
+        <PrioritySelect
           disabled={!hasTarget}
-          title={hasTarget ? '最適化時の扱いを選びます' : '目標を設定すると変更できます'}
+          options={PRIORITY_OPTIONS}
+          studentName={student.name}
           value={draft.priority}
-          onChange={(event) =>
-            onChange({ priority: event.target.value as ManageDraft['priority'] })
-          }
-          onBlur={(event) =>
-            onSave({ priority: event.currentTarget.value as ManageDraft['priority'] })
-          }
-        >
-          <option value="top_priority">最優先</option>
-          <option value="priority">優先</option>
-          <option value="semi_priority">準優先</option>
-          <option value="defer">保留</option>
-          <option value="done">終了</option>
-        </select>
-      </label>
+          onChange={(priority) => {
+            onChange({ priority })
+            onSave({ priority })
+          }}
+        />
+      </div>
 
       <div className="manage-row-field manage-required" data-label="必要EXP">
         <span>{requiredExpText}</span>

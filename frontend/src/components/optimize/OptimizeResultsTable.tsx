@@ -1,10 +1,10 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { assetUrl } from '../../api'
 import { OPTIMIZE_PRIORITY_OPTIONS } from '../../constants'
 import { formatNumber } from '../../lib/bond'
 import { effectIconUrl, SELECTABLE_BOX_ICON_URL } from '../../lib/uiAssets'
 import type { Item, OptimizeResult, PriorityKey, Student } from '../../types'
 import { IconThumb } from '../common/IconThumb'
+import { PrioritySelect } from '../common/PrioritySelect'
 import { StudentGiftHoverCard } from '../common/StudentGiftHoverCard'
 
 type OptimizeResultsTableProps = {
@@ -22,13 +22,6 @@ type OptimizeResultsTableProps = {
 const SELECTABLE_BOX_ITEM_ID = -1001
 const SELECTABLE_BOX_LABEL = '選択式ボックス'
 const SELECTABLE_BOX_EXP = 60
-
-type PrioritySelectProps = {
-  disabled: boolean
-  studentName: string
-  value: PriorityKey
-  onChange: (priority: PriorityKey) => void
-}
 
 function isBouquetDisplayItem(
   item: { item_name?: string; gift_kind?: string },
@@ -109,172 +102,6 @@ function sortGiftDisplayItems<T extends { item_id: number; item_name: string; gi
   })
 }
 
-function OptimizePrioritySelect({
-  disabled,
-  onChange,
-  studentName,
-  value,
-}: PrioritySelectProps) {
-  const [open, setOpen] = useState(false)
-  const listboxId = useId()
-  const rootRef = useRef<HTMLSpanElement | null>(null)
-  const buttonRef = useRef<HTMLButtonElement | null>(null)
-  const optionRefs = useRef<Record<string, HTMLButtonElement | null>>({})
-  const selectedOption =
-    OPTIMIZE_PRIORITY_OPTIONS.find((option) => option.value === value) ?? OPTIMIZE_PRIORITY_OPTIONS[0]
-
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-
-    const selectedOptionButton = optionRefs.current[value]
-    selectedOptionButton?.focus()
-
-    function handlePointerDown(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-    return () => document.removeEventListener('pointerdown', handlePointerDown)
-  }, [open, value])
-
-  function closeAndFocusButton() {
-    setOpen(false)
-    window.requestAnimationFrame(() => buttonRef.current?.focus())
-  }
-
-  function selectPriority(nextPriority: PriorityKey) {
-    if (nextPriority !== value) {
-      onChange(nextPriority)
-    }
-    closeAndFocusButton()
-  }
-
-  function focusOption(index: number) {
-    const option = OPTIMIZE_PRIORITY_OPTIONS[index]
-    if (!option) {
-      return
-    }
-    optionRefs.current[option.value]?.focus()
-  }
-
-  function handleButtonKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (disabled) {
-      return
-    }
-
-    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      setOpen(true)
-    }
-
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      setOpen(false)
-    }
-  }
-
-  function handleOptionKeyDown(
-    event: KeyboardEvent<HTMLButtonElement>,
-    index: number,
-    priority: PriorityKey,
-  ) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      focusOption((index + 1) % OPTIMIZE_PRIORITY_OPTIONS.length)
-      return
-    }
-
-    if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      focusOption((index - 1 + OPTIMIZE_PRIORITY_OPTIONS.length) % OPTIMIZE_PRIORITY_OPTIONS.length)
-      return
-    }
-
-    if (event.key === 'Home') {
-      event.preventDefault()
-      focusOption(0)
-      return
-    }
-
-    if (event.key === 'End') {
-      event.preventDefault()
-      focusOption(OPTIMIZE_PRIORITY_OPTIONS.length - 1)
-      return
-    }
-
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      selectPriority(priority)
-      return
-    }
-
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      closeAndFocusButton()
-    }
-  }
-
-  return (
-    <span
-      ref={rootRef}
-      className={`opt-priority-select-shell${open ? ' open' : ''}`}
-      data-priority={value}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          setOpen(false)
-        }
-      }}
-    >
-      <button
-        ref={buttonRef}
-        aria-controls={open ? listboxId : undefined}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label={`${studentName} の優先度`}
-        className="opt-priority-select"
-        disabled={disabled}
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        onKeyDown={handleButtonKeyDown}
-      >
-        {selectedOption.label}
-      </button>
-
-      {open ? (
-        <span
-          id={listboxId}
-          aria-label={`${studentName} の優先度`}
-          className="opt-priority-menu"
-          role="listbox"
-        >
-          {OPTIMIZE_PRIORITY_OPTIONS.map((option, index) => (
-            <button
-              key={option.value}
-              ref={(element) => {
-                optionRefs.current[option.value] = element
-              }}
-              aria-selected={option.value === value}
-              className="opt-priority-option"
-              data-priority={option.value}
-              role="option"
-              tabIndex={option.value === value ? 0 : -1}
-              type="button"
-              onClick={() => selectPriority(option.value)}
-              onKeyDown={(event) => handleOptionKeyDown(event, index, option.value)}
-            >
-              <span className="opt-priority-option-dot" />
-              <span>{option.label}</span>
-            </button>
-          ))}
-        </span>
-      ) : null}
-    </span>
-  )
-}
 
 export function OptimizeResultsTable({
   fallbackItemsById,
@@ -342,8 +169,9 @@ export function OptimizeResultsTable({
                 <span className="opt-birthday-date">{hasBirthday ? birthday : '誕生日なし'}</span>
               </div>
               <div className="opt-priority-cell" data-label="優先度">
-                <OptimizePrioritySelect
+                <PrioritySelect
                   disabled={prioritySavingStudentId === row.student_id}
+                  options={OPTIMIZE_PRIORITY_OPTIONS}
                   studentName={row.student_name}
                   value={row.priority}
                   onChange={(priority) => onPriorityChange(row, priority)}
