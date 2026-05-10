@@ -511,6 +511,37 @@ async function handleApiRequest(
     return true
   }
 
+  const UI_SETTING_KEYS = new Set([
+    'ui.optimize.daily_top_priority_cafe_taps',
+    'ui.optimize.daily_other_cafe_taps',
+    'ui.optimize.daily_schedules',
+  ])
+
+  if (pathname === '/api/ui-settings' && method === 'GET') {
+    const settings: Record<string, string> = {}
+    for (const key of UI_SETTING_KEYS) {
+      const value = database.getMeta(key)
+      if (value !== null) {
+        settings[key] = value
+      }
+    }
+    sendJson(response, 200, settings)
+    return true
+  }
+
+  const uiSettingMatch = pathname.match(/^\/api\/ui-settings\/([a-z0-9._-]+)$/)
+  if (uiSettingMatch && method === 'PUT') {
+    const key = uiSettingMatch[1]
+    if (!UI_SETTING_KEYS.has(key)) {
+      sendJson(response, 400, { error: 'Unknown setting key' })
+      return true
+    }
+    const body = await readJsonBody<{ value: string }>(request)
+    database.setMeta(key, String(body.value ?? ''))
+    sendJson(response, 200, { ok: true })
+    return true
+  }
+
   sendJson(response, 404, { error: 'Not found' })
   return true
 }

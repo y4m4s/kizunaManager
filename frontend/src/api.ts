@@ -127,6 +127,9 @@ interface RawApi {
     daily_schedules?: number,
     include_semi_priority?: boolean,
   ): Promise<OptimizeResult>
+
+  get_ui_settings(): Promise<Record<string, string>>
+  set_ui_setting(key: string, value: string): Promise<{ ok: boolean }>
 }
 
 export const api: RawApi = {
@@ -221,6 +224,15 @@ export const api: RawApi = {
   },
   delete_plan(plan_id) {
     return requestJson(`/api/plans/${plan_id}`, { method: 'DELETE' })
+  },
+  get_ui_settings() {
+    return requestJson('/api/ui-settings')
+  },
+  set_ui_setting(key, value) {
+    return requestJson(`/api/ui-settings/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
+    })
   },
   optimize(
     daily_top_priority_cafe_taps = 0,

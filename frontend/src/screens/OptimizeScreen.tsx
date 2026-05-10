@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { PRIORITY_SORT_ORDER } from '../constants'
 import { formatNumber } from '../lib/bond'
@@ -11,30 +11,11 @@ type OptimizeScreenProps = {
   refreshToken: number
 }
 
-const LEGACY_DAILY_CAFE_TAPS_KEY = 'optimize:dailyCafeTaps'
-const DAILY_TOP_PRIORITY_CAFE_TAPS_KEY = 'optimize:dailyTopPriorityCafeTaps'
-const DAILY_OTHER_CAFE_TAPS_KEY = 'optimize:dailyOtherCafeTaps'
-const DAILY_SCHEDULES_KEY = 'optimize:dailySchedules'
+const SETTINGS_KEY_TOP_PRIORITY = 'ui.optimize.daily_top_priority_cafe_taps'
+const SETTINGS_KEY_OTHER = 'ui.optimize.daily_other_cafe_taps'
+const SETTINGS_KEY_SCHEDULES = 'ui.optimize.daily_schedules'
 const CAFE_TAP_EXP = 15
 const SCHEDULE_EXPECTED_EXP = 31.25
-
-function validPersistedCount(value: string | null): string | null {
-  return value && /^\d+$/.test(value) ? value : null
-}
-
-function loadPersistedCount(key: string, fallbackKey?: string): string {
-  if (typeof window === 'undefined') {
-    return '0'
-  }
-  const stored = validPersistedCount(window.localStorage.getItem(key))
-  if (stored) {
-    return stored
-  }
-  if (fallbackKey) {
-    return validPersistedCount(window.localStorage.getItem(fallbackKey)) || '0'
-  }
-  return '0'
-}
 
 function sanitizeCountInput(value: string): string {
   const digitsOnly = value.replace(/[^\d]/g, '')
@@ -69,13 +50,10 @@ export function OptimizeScreen({
 }: OptimizeScreenProps) {
   const [items, setItems] = useState<Item[]>([])
   const [studentsById, setStudentsById] = useState<Record<number, Student>>({})
-  const [dailyTopPriorityCafeTaps, setDailyTopPriorityCafeTaps] = useState(() =>
-    loadPersistedCount(DAILY_TOP_PRIORITY_CAFE_TAPS_KEY, LEGACY_DAILY_CAFE_TAPS_KEY),
-  )
-  const [dailyOtherCafeTaps, setDailyOtherCafeTaps] = useState(() =>
-    loadPersistedCount(DAILY_OTHER_CAFE_TAPS_KEY, LEGACY_DAILY_CAFE_TAPS_KEY),
-  )
-  const [dailySchedules, setDailySchedules] = useState(() => loadPersistedCount(DAILY_SCHEDULES_KEY))
+  const [dailyTopPriorityCafeTaps, setDailyTopPriorityCafeTaps] = useState('0')
+  const [dailyOtherCafeTaps, setDailyOtherCafeTaps] = useState('0')
+  const [dailySchedules, setDailySchedules] = useState('0')
+  const settingsLoadedRef = useRef(false)
   const [includeSemiPriority, setIncludeSemiPriority] = useState(true)
   const [result, setResult] = useState<OptimizeResult | null>(null)
   const [loading, setLoading] = useState(true)
@@ -120,24 +98,46 @@ export function OptimizeScreen({
   }, [bridgeReady, refreshToken])
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
+    if (!bridgeReady) return
+    settingsLoadedRef.current = false
+    let disposed = false
+    async function loadSettings() {
+      try {
+        const settings = await api.get_ui_settings()
+        if (disposed) return
+        setDailyTopPriorityCafeTaps(settings[SETTINGS_KEY_TOP_PRIORITY] ?? '0')
+        setDailyOtherCafeTaps(settings[SETTINGS_KEY_OTHER] ?? '0')
+        setDailySchedules(settings[SETTINGS_KEY_SCHEDULES] ?? '0')
+      } finally {
+        if (!disposed) settingsLoadedRef.current = true
+      }
     }
-    window.localStorage.setItem(DAILY_TOP_PRIORITY_CAFE_TAPS_KEY, dailyTopPriorityCafeTaps || '0')
+    void loadSettings()
+    return () => { disposed = true }
+  }, [bridgeReady])
+
+  useEffect(() => {
+    if (!settingsLoadedRef.current) return
+    const timer = setTimeout(() => {
+      void api.set_ui_setting(SETTINGS_KEY_TOP_PRIORITY, dailyTopPriorityCafeTaps || '0')
+    }, 500)
+    return () => clearTimeout(timer)
   }, [dailyTopPriorityCafeTaps])
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    window.localStorage.setItem(DAILY_OTHER_CAFE_TAPS_KEY, dailyOtherCafeTaps || '0')
+    if (!settingsLoadedRef.current) return
+    const timer = setTimeout(() => {
+      void api.set_ui_setting(SETTINGS_KEY_OTHER, dailyOtherCafeTaps || '0')
+    }, 500)
+    return () => clearTimeout(timer)
   }, [dailyOtherCafeTaps])
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    window.localStorage.setItem(DAILY_SCHEDULES_KEY, dailySchedules || '0')
+    if (!settingsLoadedRef.current) return
+    const timer = setTimeout(() => {
+      void api.set_ui_setting(SETTINGS_KEY_SCHEDULES, dailySchedules || '0')
+    }, 500)
+    return () => clearTimeout(timer)
   }, [dailySchedules])
 
   async function runOptimization() {
