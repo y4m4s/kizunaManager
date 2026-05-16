@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { api } from '../api'
-import { PRIORITY_LABELS, PRIORITY_OPTIONS, PRIORITY_SORT_ORDER } from '../constants'
+import { PRIORITY_LABELS, PRIORITY_OPTIONS } from '../constants'
 import { calcRequiredExp, clampLevel, formatNumber } from '../lib/bond'
 import { normalizeForSearch } from '../lib/search'
 import type { Plan, PriorityKey, Student } from '../types'
@@ -259,22 +259,25 @@ export function ManageScreen({
     })
   }
 
+  function getPriorityGroup(priority: PriorityKey | null): number {
+    if (priority === null) return 0
+    if (priority === 'top_priority' || priority === 'priority' || priority === 'semi_priority') return 1
+    if (priority === 'defer') return 2
+    if (priority === 'done') return 3
+    return 0
+  }
+
   const managedStudents = students
     .filter((student) => student.is_owned || student.id in plansByStudent)
     .sort((left, right) => {
       const leftPriority = getSortPriority(left)
       const rightPriority = getSortPriority(right)
 
-      if (leftPriority && rightPriority) {
-        const priorityDiff =
-          (PRIORITY_SORT_ORDER[leftPriority] ?? Number.MAX_SAFE_INTEGER) -
-          (PRIORITY_SORT_ORDER[rightPriority] ?? Number.MAX_SAFE_INTEGER)
-        if (priorityDiff !== 0) {
-          return priorityDiff
-        }
-      } else if (leftPriority || rightPriority) {
-        return leftPriority ? -1 : 1
-      }
+      const groupDiff = getPriorityGroup(leftPriority) - getPriorityGroup(rightPriority)
+      if (groupDiff !== 0) return groupDiff
+
+      const levelDiff = right.current_bond_level - left.current_bond_level
+      if (levelDiff !== 0) return levelDiff
 
       return left.name.localeCompare(right.name, 'ja')
     })
