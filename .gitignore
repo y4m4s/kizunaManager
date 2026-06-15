@@ -61,3 +61,7 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Electron
+release/
+.claude/

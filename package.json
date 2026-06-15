@@ -1,12 +1,43 @@
 {
   "name": "ba-kizuna-manager",
   "private": true,
+  "version": "1.0.0",
+  "description": "Blue Archive Kizuna Manager",
+  "author": "y4m4s",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "npm --prefix frontend run build",
     "start": "node --no-warnings --experimental-strip-types scripts/start.mjs",
     "lint": "npm --prefix frontend run lint",
-    "test:backend": "node --no-warnings --experimental-strip-types --test backend/src/optimizer.test.ts"
+    "test:backend": "node --no-warnings --experimental-strip-types --test backend/src/optimizer.test.ts",
+    "desktop": "npm run build && electron .",
+    "desktop:dev": "electron .",
+    "desktop:dist": "npm run build && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.2"
+  },
+  "build": {
+    "appId": "local.ba-kizuna-manager",
+    "productName": "Kizuna Manager",
+    "asar": false,
+    "files": [
+      "electron/**/*",
+      "backend/src/**/*",
+      "frontend/dist/**/*",
+      "package.json",
+      "!**/*.test.ts"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
   }
 }

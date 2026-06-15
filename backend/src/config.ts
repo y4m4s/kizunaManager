@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url'
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url))
 export const BACKEND_DIR = path.resolve(CURRENT_DIR, '..')
 export const BASE_DIR = path.resolve(BACKEND_DIR, '..')
-export const DATA_DIR = path.join(BASE_DIR, 'data')
+// パッケージ版デスクトップアプリでは KIZUNA_DATA_DIR でユーザーデータ領域に差し替える
+export const DATA_DIR = process.env.KIZUNA_DATA_DIR
+  ? path.resolve(process.env.KIZUNA_DATA_DIR)
+  : path.join(BASE_DIR, 'data')
 export const CACHE_DIR = path.join(DATA_DIR, 'cache')
 export const IMAGE_DIR = path.join(DATA_DIR, 'images')
 export const STUDENT_IMAGE_DIR = path.join(IMAGE_DIR, 'students')

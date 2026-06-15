@@ -8,7 +8,10 @@ import type {
   TaskSnapshot,
 } from './types'
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || 'http://127.0.0.1:8787'
+// 本番ビルドはバックエンドが同一オリジンで配信するため相対パスを使う(Electron の動的ポートにも対応)
+const API_BASE =
+  (import.meta.env.VITE_API_BASE as string | undefined) ??
+  (import.meta.env.DEV ? 'http://127.0.0.1:8787' : '')
 
 function joinUrl(pathname: string): string {
   return `${API_BASE}${pathname}`

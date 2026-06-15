@@ -9,6 +9,7 @@ import {
   ITEM_IMAGE_DIR,
   RECOVERED_DB_PATH,
   SCHOOL_NAME_MAP,
+  STUDENT_IMAGE_DIR,
   SELECTABLE_BOX_ICON_FILE,
   SELECTABLE_BOX_ITEM_ID,
   SELECTABLE_BOX_KEY,
@@ -33,6 +34,17 @@ function normalizedItemGiftKind(name: string, giftKind: unknown): string {
   return String(giftKind || 'gift')
 }
 
+// DB には取り込み時の絶対パスが保存されているため、データディレクトリが
+// 移動された場合 (別マシンの DB やデスクトップ版での流用) に備えて
+// 現在の画像ディレクトリ基準でパスを引き直す
+function normalizedIconPath(stored: unknown, imageDir: string): string {
+  const value = String(stored || '')
+  if (!value) {
+    return ''
+  }
+  return path.join(imageDir, path.basename(value))
+}
+
 export class Database {
   private readonly primaryDbPath: string
   readonly dbPath: string
@@ -40,6 +52,7 @@ export class Database {
 
   constructor(dbPath: string = DB_PATH) {
     this.primaryDbPath = path.resolve(dbPath)
+    fs.mkdirSync(path.dirname(this.primaryDbPath), { recursive: true })
     this.dbPath = this.preferredDbPath(this.primaryDbPath)
     fs.mkdirSync(path.dirname(this.dbPath), { recursive: true })
     this.db = this.openConnection(this.dbPath)
@@ -163,7 +176,7 @@ export class Database {
       id: Number(row.id),
       name: String(row.name || ''),
       school: normalizeSchoolName(String(row.school || '')),
-      icon_path: String(row.icon_path || ''),
+      icon_path: normalizedIconPath(row.icon_path, STUDENT_IMAGE_DIR),
       birthday,
       favor_item_tags: this.loads<string[]>(row.favor_item_tags, []),
       favor_item_unique_tags: this.loads<string[]>(row.favor_item_unique_tags, []),
@@ -187,7 +200,7 @@ export class Database {
       exp_value: Number(row.exp_value || 0),
       gift_kind: normalizedItemGiftKind(itemName, row.gift_kind),
       icon_name: String(row.icon_name || ''),
-      icon_path: String(row.icon_path || ''),
+      icon_path: normalizedIconPath(row.icon_path, ITEM_IMAGE_DIR),
       raw_json: this.loads<Record<string, unknown>>(row.raw_json, {}),
       quantity: Number(row.quantity || 0),
       box_type: row.box_type ? String(row.box_type) : undefined,

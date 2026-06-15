@@ -4,7 +4,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http'
 import path from 'node:path'
 import { URL } from 'node:url'
 
-import { DEFAULT_PORT, FRONTEND_DIST_DIR, BASE_DIR, PRIORITY_LABELS } from './config.ts'
+import { DATA_DIR, DEFAULT_PORT, FRONTEND_DIST_DIR, BASE_DIR, PRIORITY_LABELS } from './config.ts'
 import { Database } from './database.ts'
 import {
   cacheIcons,
@@ -258,7 +258,12 @@ async function handleAssetRequest(url: URL, response: ServerResponse): Promise<b
     return false
   }
   const relativePath = decodeURIComponent(url.pathname.slice(ASSET_PREFIX.length))
-  const filePath = resolveSafePath(BASE_DIR, relativePath)
+  // data/ 配下は DATA_DIR から配信する (KIZUNA_DATA_DIR でデータ領域が
+  // リポジトリ外に移動していても画像等を解決できるようにするため)
+  const dataMatch = relativePath.match(/^data[/\\](.+)$/)
+  const filePath = dataMatch
+    ? resolveSafePath(DATA_DIR, dataMatch[1])
+    : resolveSafePath(BASE_DIR, relativePath)
   if (!filePath) {
     sendJson(response, 403, { error: 'Forbidden' })
     return true
