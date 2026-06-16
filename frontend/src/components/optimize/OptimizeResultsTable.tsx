@@ -1,6 +1,6 @@
 import { assetUrl } from '../../api'
 import { OPTIMIZE_PRIORITY_OPTIONS } from '../../constants'
-import { formatNumber } from '../../lib/bond'
+import { calcRequiredExp, cumulativeExpToLevel, formatNumber } from '../../lib/bond'
 import { effectIconUrl, SELECTABLE_BOX_ICON_URL } from '../../lib/uiAssets'
 import type { Item, OptimizeResult, PriorityKey, Student } from '../../types'
 import { IconThumb } from '../common/IconThumb'
@@ -22,6 +22,7 @@ type OptimizeResultsTableProps = {
 const SELECTABLE_BOX_ITEM_ID = -1001
 const SELECTABLE_BOX_LABEL = '選択式ボックス'
 const SELECTABLE_BOX_EXP = 60
+const MAX_BOND_LEVEL = 100
 
 function isBouquetDisplayItem(
   item: { item_name?: string; gift_kind?: string },
@@ -29,7 +30,7 @@ function isBouquetDisplayItem(
 ): boolean {
   return item.gift_kind === 'bouquet' ||
     fallbackItem?.gift_kind === 'bouquet' ||
-    String(item.item_name || fallbackItem?.name || '').includes('\u82b1\u675f')
+    String(item.item_name || fallbackItem?.name || '').includes('花束')
 }
 
 function toneClassForGift(
@@ -102,6 +103,22 @@ function sortGiftDisplayItems<T extends { item_id: number; item_name: string; gi
   })
 }
 
+function applyExp(
+  startLevel: number,
+  startExp: number,
+  addExp: number,
+): { level: number; remainingExp: number } {
+  const totalCumulative = cumulativeExpToLevel(startLevel) + startExp + addExp
+  let level = startLevel
+  for (let l = startLevel + 1; l <= MAX_BOND_LEVEL; l++) {
+    if (cumulativeExpToLevel(l) > totalCumulative) break
+    level = l
+  }
+  return {
+    level,
+    remainingExp: Math.max(0, totalCumulative - cumulativeExpToLevel(level)),
+  }
+}
 
 export function OptimizeResultsTable({
   fallbackItemsById,
@@ -120,6 +137,31 @@ export function OptimizeResultsTable({
       </section>
     )
   }
+
+  const purpleExp = result.leftovers
+    .filter((item) => item.rarity === 'SSR')
+    .reduce((sum, item) => {
+      const fallback = fallbackItemsById[item.item_id]
+      return sum + (fallback?.exp_value ?? 0) * item.quantity
+    }, 0)
+  const boxExp = result.craftable_boxes.box_count * SELECTABLE_BOX_EXP
+  const totalSurplusExp = purpleExp + boxExp
+
+  const applicationTarget = result.results
+    .filter((row) => row.priority === 'top_priority')
+    .sort((a, b) =>
+      b.target_bond_level !== a.target_bond_level
+        ? b.target_bond_level - a.target_bond_level
+        : b.remaining_exp - a.remaining_exp,
+    )[0] ?? null
+
+  const applicationResult = applicationTarget
+    ? applyExp(
+        applicationTarget.predicted_level,
+        applicationTarget.predicted_level_exp,
+        totalSurplusExp,
+      )
+    : null
 
   return (
     <section className="card-shell optimize-results">
@@ -303,25 +345,101 @@ export function OptimizeResultsTable({
             )}
           </section>
 
-          <aside className="optimize-leftovers-side">
-            <h3>作れる選択式ボックス</h3>
-            <p className="helper-text">{`橙 ${result.craftable_boxes.source_item_count} 個から換算`}</p>
-            <div className="opt-items-grid opt-items-grid-compact">
-              <div
-                className="opt-item-card gift-box"
-                title={`${SELECTABLE_BOX_LABEL} x${result.craftable_boxes.box_count}`}
-              >
-                <img
-                  alt={SELECTABLE_BOX_LABEL}
-                  className="opt-item-image"
-                  height={56}
-                  src={SELECTABLE_BOX_ICON_URL}
-                  width={56}
-                />
-                <span className="opt-item-badge">{`x${result.craftable_boxes.box_count}`}</span>
-              </div>
+          <div className="optimize-leftovers-right">
+            <div className="optimize-leftovers-right-top">
+              <aside className="optimize-leftovers-side">
+                <h3>作れる選択式ボックス</h3>
+                <p className="helper-text">{`橙 ${result.craftable_boxes.source_item_count} 個から換算`}</p>
+                <div className="opt-items-grid opt-items-grid-compact">
+                  <div
+                    className="opt-item-card gift-box"
+                    title={`${SELECTABLE_BOX_LABEL} x${result.craftable_boxes.box_count}`}
+                  >
+                    <img
+                      alt={SELECTABLE_BOX_LABEL}
+                      className="opt-item-image"
+                      height={56}
+                      src={SELECTABLE_BOX_ICON_URL}
+                      width={56}
+                    />
+                    <span className="opt-item-badge">{`x${result.craftable_boxes.box_count}`}</span>
+                  </div>
+                </div>
+              </aside>
+
+              <aside className="optimize-leftovers-surplus">
+                <h3>余分経験値換算</h3>
+                <dl className="optimize-surplus-list">
+                  <div className="optimize-surplus-row">
+                    <dt>紫贈り物</dt>
+                    <dd>{formatNumber(purpleExp)} EXP</dd>
+                  </div>
+                  <div className="optimize-surplus-row">
+                    <dt>選択式ボックス</dt>
+                    <dd>{formatNumber(boxExp)} EXP</dd>
+                  </div>
+                  <div className="optimize-surplus-row optimize-surplus-total">
+                    <dt>合計</dt>
+                    <dd>{formatNumber(totalSurplusExp)} EXP</dd>
+                  </div>
+                </dl>
+              </aside>
             </div>
-          </aside>
+
+            <aside className="optimize-surplus-application">
+              <h3>余分EXPの充当先</h3>
+              {applicationTarget === null ? (
+                <p className="helper-text">最優先の生徒がいません</p>
+              ) : (
+                <div className="optimize-surplus-app-body">
+                  <div className="optimize-surplus-app-student">
+                    {(() => {
+                      const iconSrc = assetUrl(studentsById[applicationTarget.student_id]?.icon_path ?? '')
+                      return iconSrc ? (
+                        <img
+                          alt={applicationTarget.student_name}
+                          className="optimize-surplus-app-icon"
+                          height={32}
+                          src={iconSrc}
+                          width={32}
+                        />
+                      ) : null
+                    })()}
+                    <div className="optimize-surplus-app-info">
+                      <span className="optimize-surplus-app-name">{applicationTarget.student_name}</span>
+                      <span className="optimize-surplus-app-meta">{`目標 Lv${applicationTarget.target_bond_level}`}</span>
+                    </div>
+                  </div>
+                  <div className="optimize-surplus-app-level">
+                    <span className="optimize-surplus-level-before">{`Lv${applicationTarget.predicted_level}`}</span>
+                    <span className="optimize-surplus-arrow">⇒</span>
+                    <span
+                      className={`optimize-surplus-level-after${applicationResult!.level >= applicationTarget.target_bond_level ? ' reached' : ''}`}
+                    >
+                      {`Lv${applicationResult!.level}`}
+                    </span>
+                  </div>
+                  <p className="optimize-surplus-app-detail">
+                    {(() => {
+                      const gained = applicationResult!.level - applicationTarget.predicted_level
+                      const reachedTarget = applicationResult!.level >= applicationTarget.target_bond_level
+                      if (reachedTarget) {
+                        return gained > 0 ? `+${gained} レベル / 目標達成` : '目標達成'
+                      }
+                      const remainingToTarget = calcRequiredExp(
+                        applicationResult!.level,
+                        applicationResult!.remainingExp,
+                        applicationTarget.target_bond_level,
+                      )
+                      return gained > 0
+                        ? `+${gained} レベル / 目標まで残 ${formatNumber(remainingToTarget)} EXP`
+                        : `目標まで残 ${formatNumber(remainingToTarget)} EXP`
+                    })()}
+                  </p>
+                </div>
+              )}
+            </aside>
+          </div>
         </div>
       </div>
     </section>

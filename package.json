@@ -18,7 +18,8 @@
   },
   "devDependencies": {
     "electron": "^42.4.0",
-    "electron-builder": "^26.15.2"
+    "electron-builder": "^26.15.2",
+    "playwright": "^1.60.0"
   },
   "build": {
     "appId": "local.ba-kizuna-manager",
