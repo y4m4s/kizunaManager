@@ -63,9 +63,11 @@ function findFreePort() {
 
 // データディレクトリの解決順:
 //   1. KIZUNA_DATA_DIR 環境変数 (明示指定)
-//   2. パッケージ版: exe と同じ場所にある data フォルダ (既存データの参照用)
-//   3. パッケージ版: %APPDATA%/<app>/data
-//   4. 開発起動: リポジトリの data/ (Web 版と共通)
+//   2. パッケージ版: exe と同じ場所にある data フォルダ
+//   3. パッケージ版: exe の一つ上の階層にある data フォルダ
+//      (release/ サブディレクトリから実行した場合にプロジェクトの data/ を参照できる)
+//   4. パッケージ版: %APPDATA%/<app>/data
+//   5. 開発起動: リポジトリの data/ (Web 版と共通)
 function dataDir() {
   if (process.env.KIZUNA_DATA_DIR) {
     return path.resolve(process.env.KIZUNA_DATA_DIR)
@@ -77,6 +79,10 @@ function dataDir() {
     const portableData = path.join(exeDir, 'data')
     if (fs.existsSync(portableData)) {
       return portableData
+    }
+    const parentData = path.resolve(exeDir, '..', 'data')
+    if (fs.existsSync(parentData)) {
+      return parentData
     }
     return path.join(app.getPath('userData'), 'data')
   }
