@@ -14,6 +14,7 @@ type OptimizeScreenProps = {
 const SETTINGS_KEY_TOP_PRIORITY = 'ui.optimize.daily_top_priority_cafe_taps'
 const SETTINGS_KEY_OTHER = 'ui.optimize.daily_other_cafe_taps'
 const SETTINGS_KEY_SCHEDULES = 'ui.optimize.daily_schedules'
+const SETTINGS_KEY_USE_LEFTOVER_SSR = 'ui.optimize.use_leftover_ssr'
 const CAFE_TAP_EXP = 15
 const SCHEDULE_EXPECTED_EXP = 31.25
 
@@ -55,6 +56,7 @@ export function OptimizeScreen({
   const [dailySchedules, setDailySchedules] = useState('0')
   const settingsLoadedRef = useRef(false)
   const [includeSemiPriority, setIncludeSemiPriority] = useState(true)
+  const [useLeftoverSsrForTop, setUseLeftoverSsrForTop] = useState(false)
   const [result, setResult] = useState<OptimizeResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [optimizing, setOptimizing] = useState(false)
@@ -108,6 +110,7 @@ export function OptimizeScreen({
         setDailyTopPriorityCafeTaps(settings[SETTINGS_KEY_TOP_PRIORITY] ?? '0')
         setDailyOtherCafeTaps(settings[SETTINGS_KEY_OTHER] ?? '0')
         setDailySchedules(settings[SETTINGS_KEY_SCHEDULES] ?? '0')
+        setUseLeftoverSsrForTop(settings[SETTINGS_KEY_USE_LEFTOVER_SSR] === 'true')
       } finally {
         if (!disposed) settingsLoadedRef.current = true
       }
@@ -140,6 +143,14 @@ export function OptimizeScreen({
     return () => clearTimeout(timer)
   }, [dailySchedules])
 
+  useEffect(() => {
+    if (!settingsLoadedRef.current) return
+    const timer = setTimeout(() => {
+      void api.set_ui_setting(SETTINGS_KEY_USE_LEFTOVER_SSR, String(useLeftoverSsrForTop))
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [useLeftoverSsrForTop])
+
   async function runOptimization() {
     setOptimizing(true)
     try {
@@ -148,6 +159,7 @@ export function OptimizeScreen({
         parseCountInput(dailyOtherCafeTaps),
         parseCountInput(dailySchedules),
         includeSemiPriority,
+        useLeftoverSsrForTop,
       )
       if (!next || typeof next !== 'object') {
         setResult(null)
@@ -318,6 +330,14 @@ export function OptimizeScreen({
                 onChange={(event) => setIncludeSemiPriority(event.target.checked)}
               />
               準優先を含める
+            </label>
+            <label className="optimize-toggle-label">
+              <input
+                checked={useLeftoverSsrForTop}
+                type="checkbox"
+                onChange={(event) => setUseLeftoverSsrForTop(event.target.checked)}
+              />
+              余った紫を最優先に投入
             </label>
             <button
               className="btn btn-primary"

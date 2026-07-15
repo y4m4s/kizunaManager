@@ -488,6 +488,7 @@ async function handleApiRequest(
       daily_other_cafe_taps?: number
       daily_schedules?: number
       include_semi_priority?: boolean
+      use_leftover_ssr_for_top?: boolean
     }>(request)
     const legacyCafeTaps = Number(body.daily_cafe_taps || 0)
     const dailyTopPriorityCafeTaps =
@@ -511,6 +512,7 @@ async function handleApiRequest(
         dailyOtherCafeTaps,
         Number(body.daily_schedules || 0),
         body.include_semi_priority !== false,
+        body.use_leftover_ssr_for_top === true,
       ),
     )
     return true
@@ -520,6 +522,7 @@ async function handleApiRequest(
     'ui.optimize.daily_top_priority_cafe_taps',
     'ui.optimize.daily_other_cafe_taps',
     'ui.optimize.daily_schedules',
+    'ui.optimize.use_leftover_ssr',
   ])
 
   if (pathname === '/api/ui-settings' && method === 'GET') {

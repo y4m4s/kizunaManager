@@ -282,3 +282,104 @@ test('rebalances equivalent class allocations away from shared items', () => {
   assert.equal(result.results.every((row) => row.remaining_exp === 0), true)
   assert.equal(result.leftovers.reduce((sum, row) => sum + row.quantity, 0), 1)
 })
+
+test('marks leftover SR gifts as craft-safe when no registered student can use them', () => {
+  const plans = [plan(1, 1, 120, 'top_priority')]
+  const studentsById = {
+    1: student(1),
+    2: student(2),
+  }
+  const itemsById = {
+    101: item(101, 'Unmatched SR'),
+    102: item(102, 'SSR medium', 'SSR'),
+  }
+
+  const result = optimizeAllocation(plans, { 101: 2, 102: 1 }, studentsById, itemsById)
+
+  assert.equal(
+    result.leftovers.find((leftover) => leftover.item_id === 101)?.craft_material_ok,
+    true,
+  )
+  assert.equal(
+    result.leftovers.find((leftover) => leftover.item_id === 102)?.craft_material_ok,
+    false,
+  )
+})
+
+test('does not mark leftover SR gifts craft-safe when a registered student can use them', () => {
+  const plans = [plan(1, 1, 120, 'top_priority')]
+  const studentsById = {
+    1: student(1),
+    2: student(2, ['a']),
+  }
+  const itemsById = { 101: item(101, 'Matched SR', 'SR', ['a']) }
+
+  const result = optimizeAllocation(plans, { 101: 2 }, studentsById, itemsById)
+
+  assert.equal(
+    result.leftovers.find((leftover) => leftover.item_id === 101)?.craft_material_ok,
+    false,
+  )
+})
+
+test('ignores unregistered or max-bond students when judging craft safety', () => {
+  const plans = [plan(1, 1, 120, 'top_priority')]
+  const studentsById = {
+    1: student(1),
+    2: { ...student(2, ['a']), is_owned: false },
+    3: { ...student(3, ['a']), current_bond_level: 100 },
+  }
+  const itemsById = { 101: item(101, 'Matched SR', 'SR', ['a']) }
+
+  const result = optimizeAllocation(plans, { 101: 2 }, studentsById, itemsById)
+
+  assert.equal(
+    result.leftovers.find((leftover) => leftover.item_id === 101)?.craft_material_ok,
+    true,
+  )
+})
+
+test('uses leftover SSR medium gifts for top priority only when enabled', () => {
+  const plans = [plan(1, 1, 120, 'top_priority')]
+  const studentsById = { 1: student(1) }
+  const itemsById = { 101: item(101, 'SSR medium', 'SSR') }
+
+  const disabled = optimizeAllocation(plans, { 101: 1 }, studentsById, itemsById)
+  const enabled = optimizeAllocation(
+    plans,
+    { 101: 1 },
+    studentsById,
+    itemsById,
+    0,
+    0,
+    0,
+    true,
+    true,
+  )
+
+  assert.equal(disabled.results[0].allocated_exp, 0)
+  assert.equal(disabled.leftovers[0].item_id, 101)
+  assert.equal(enabled.results[0].allocated_exp, 120)
+  assert.equal(enabled.results[0].remaining_exp, 0)
+  assert.equal(enabled.results[0].allocated_items[0].effect, 'medium')
+  assert.equal(enabled.results[0].allocated_items[0].exp_per_item, 120)
+  assert.equal(enabled.leftovers.length, 0)
+})
+
+test('repairs greedy overshoot with an exact bounded subset', () => {
+  const plans = [plan(1, 1, 120)]
+  const studentsById = { 1: student(1, ['a', 'b', 'c']) }
+  const itemsById = {
+    101: item(101, 'Extra large', 'SR', ['a', 'b', 'c']),
+    102: item(102, 'Large', 'SR', ['a', 'b']),
+  }
+
+  const result = optimizeAllocation(plans, { 101: 1, 102: 2 }, studentsById, itemsById)
+
+  assert.equal(result.results[0].allocated_exp, 120)
+  assert.deepEqual(
+    result.results[0].allocated_items.map((allocation) => [allocation.item_id, allocation.count]),
+    [[102, 2]],
+  )
+  assert.equal(result.leftovers.find((leftover) => leftover.item_id === 101)?.quantity, 1)
+})

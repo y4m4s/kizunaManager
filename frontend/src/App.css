@@ -2123,6 +2123,20 @@
   top: 6px;
 }
 
+.opt-item-craft-ok-badge {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  bottom: 5px;
+  color: #2f855a;
+  font-size: 10px;
+  font-weight: 700;
+  left: 50%;
+  line-height: 1;
+  padding: 3px 6px;
+  position: absolute;
+  transform: translateX(-50%);
+}
+
 .optimize-leftovers {
   border-top: 1px solid #dde8f4;
   display: grid;

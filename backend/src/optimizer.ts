@@ -1,4 +1,4 @@
-﻿import { calcRequiredExp, projectLevelAfterGain } from './bondCalculator.ts'
+﻿import { calcRequiredExp, MAX_BOND_LEVEL, projectLevelAfterGain } from './bondCalculator.ts'
 import {
   PRIORITY_ORDER,
   SELECTABLE_BOX_ITEM_ID,
@@ -1180,6 +1180,219 @@ function allocateStateGroup(
   }
 }
 
+function repairAllocationOvershoot(
+  states: OptimizeStudentResult[],
+  stock: Record<number, number>,
+  itemsById: Record<number, ItemRecord>,
+  evaluations: EvaluationCache,
+): void {
+  for (const state of states) {
+    const need = Math.max(
+      0,
+      Number(state.required_exp || 0) - Number(state.passive_exp || 0),
+    )
+    const currentAllocated = Number(state.allocated_exp || 0)
+    if (currentAllocated <= need) {
+      continue
+    }
+
+    const availableCounts = new Map<number, number>()
+    for (const allocation of state.allocated_items) {
+      availableCounts.set(
+        allocation.item_id,
+        (availableCounts.get(allocation.item_id) || 0) + allocation.count,
+      )
+    }
+    for (const [itemIdText, quantityValue] of Object.entries(stock)) {
+      const itemId = Number(itemIdText)
+      const quantity = Number(quantityValue)
+      const item = itemsById[itemId]
+      const evaluation = evaluations[state.student_id]?.[itemId]
+      if (quantity <= 0 || !item || !evaluation?.visible || !canAllocateItemToPlan(state, item)) {
+        continue
+      }
+      availableCounts.set(itemId, (availableCounts.get(itemId) || 0) + quantity)
+    }
+
+    const candidates = [...availableCounts.entries()]
+      .flatMap(([itemId, count]) => {
+        const item = itemsById[itemId]
+        const evaluation = evaluations[state.student_id]?.[itemId]
+        if (!item || !evaluation?.visible || !canAllocateItemToPlan(state, item) || count <= 0) {
+          return []
+        }
+        return [{
+          count,
+          exp_per_item: evaluation.gained_exp,
+          item,
+          item_id: itemId,
+        }]
+      })
+      .filter((candidate) => candidate.exp_per_item > 0)
+      .sort((left, right) =>
+        left.item.name.localeCompare(right.item.name, 'ja') || left.item_id - right.item_id,
+      )
+    if (!candidates.length) {
+      continue
+    }
+
+    const scale = candidates.every((candidate) => candidate.exp_per_item % 20 === 0) ? 20 : 1
+    const minimumSum = Math.ceil(need / scale)
+    const maximumSum = Math.floor((currentAllocated - 1) / scale)
+    if (minimumSum > maximumSum) {
+      continue
+    }
+
+    const previousSum = new Int32Array(maximumSum + 1)
+    const previousChunk = new Int32Array(maximumSum + 1)
+    previousSum.fill(-1)
+    previousChunk.fill(-1)
+    previousSum[0] = 0
+    const chunks: Array<{ count: number; item_id: number; weight: number }> = []
+
+    for (const candidate of candidates) {
+      const unitWeight = candidate.exp_per_item / scale
+      let remainingCount = Math.min(
+        candidate.count,
+        Math.floor(maximumSum / unitWeight),
+      )
+      let chunkSize = 1
+      while (remainingCount > 0) {
+        const count = Math.min(chunkSize, remainingCount)
+        const weight = unitWeight * count
+        const chunkIndex = chunks.length
+        chunks.push({ count, item_id: candidate.item_id, weight })
+        for (let sum = maximumSum - weight; sum >= 0; sum -= 1) {
+          const nextSum = sum + weight
+          if (previousSum[sum] < 0 || previousSum[nextSum] >= 0) {
+            continue
+          }
+          previousSum[nextSum] = sum
+          previousChunk[nextSum] = chunkIndex
+        }
+        remainingCount -= count
+        chunkSize *= 2
+      }
+    }
+
+    let bestSum = -1
+    for (let sum = minimumSum; sum <= maximumSum; sum += 1) {
+      if (previousSum[sum] >= 0) {
+        bestSum = sum
+        break
+      }
+    }
+    if (bestSum < 0) {
+      continue
+    }
+
+    const selectedCounts = new Map<number, number>()
+    let cursor = bestSum
+    while (cursor > 0) {
+      const chunk = chunks[previousChunk[cursor]]
+      selectedCounts.set(
+        chunk.item_id,
+        (selectedCounts.get(chunk.item_id) || 0) + chunk.count,
+      )
+      cursor = previousSum[cursor]
+    }
+
+    for (const allocation of state.allocated_items) {
+      stock[allocation.item_id] = Number(stock[allocation.item_id] || 0) + allocation.count
+    }
+    state.allocated_items = []
+    for (const [itemId, count] of selectedCounts) {
+      const item = itemsById[itemId]
+      const evaluation = evaluations[state.student_id][itemId]
+      stock[itemId] = Number(stock[itemId] || 0) - count
+      if (stock[itemId] <= 0) {
+        delete stock[itemId]
+      }
+      appendAllocationCount(state, {
+        ...item,
+        effect: evaluation.effect,
+        effect_label: evaluation.effect_label,
+        gained_exp: evaluation.gained_exp,
+      }, count)
+    }
+    state.allocated_exp = bestSum * scale
+    state.remaining_exp = Math.max(0, need - state.allocated_exp)
+  }
+}
+
+function allocateLeftoverSsrToTopPriority(
+  states: OptimizeStudentResult[],
+  stock: Record<number, number>,
+  studentsById: Record<number, StudentRecord>,
+  itemsById: Record<number, ItemRecord>,
+): void {
+  const ssrItems = Object.entries(stock)
+    .map(([itemIdText]) => itemsById[Number(itemIdText)])
+    .filter((item): item is ItemRecord =>
+      Boolean(item) &&
+      giftRarity(item) === 'SSR' &&
+      !isBouquet(item) &&
+      String(item.gift_kind || 'gift').toLowerCase() === 'gift',
+    )
+    .sort((left, right) => left.name.localeCompare(right.name, 'ja') || left.id - right.id)
+
+  for (const state of states) {
+    if (String(state.priority || 'priority') !== 'top_priority' || state.remaining_exp <= 0) {
+      continue
+    }
+    const student = studentsById[state.student_id]
+    if (!student) {
+      continue
+    }
+    for (const item of ssrItems) {
+      const quantity = Number(stock[item.id] || 0)
+      if (quantity <= 0 || state.remaining_exp <= 0) {
+        continue
+      }
+      const [effect, gainedExp] = calculateGiftExp(student, item, itemsById)
+      if (gainedExp <= 0) {
+        continue
+      }
+      const count = Math.min(quantity, Math.ceil(state.remaining_exp / gainedExp))
+      stock[item.id] -= count
+      state.allocated_exp += gainedExp * count
+      state.remaining_exp = Math.max(0, state.remaining_exp - (gainedExp * count))
+      appendAllocationCount(state, {
+        ...item,
+        effect,
+        effect_label: EFFECT_LABELS[effect],
+        gained_exp: gainedExp,
+      }, count)
+    }
+  }
+}
+
+function isCraftMaterialItem(item: Partial<ItemRecord>): boolean {
+  return giftRarity(item) === 'SR' &&
+    !isSelectableBox(item) &&
+    !isBouquet(item) &&
+    String(item.gift_kind || 'gift').toLowerCase() === 'gift'
+}
+
+function isCraftSafeMaterial(
+  item: ItemRecord,
+  studentsById: Record<number, StudentRecord>,
+): boolean {
+  if (!isCraftMaterialItem(item)) {
+    return false
+  }
+  for (const student of Object.values(studentsById)) {
+    if (!student.is_owned || Number(student.current_bond_level || 1) >= MAX_BOND_LEVEL) {
+      continue
+    }
+    const [effect] = calculateGiftExp(student, item)
+    if (isSearchVisibleMatch(item, effect)) {
+      return false
+    }
+  }
+  return true
+}
+
 function craftableSelectableBoxCount(
   leftoverRows: OptimizeResultRecord['leftovers'],
 ): [number, number] {
@@ -1222,6 +1435,7 @@ export function optimizeAllocation(
   dailyOtherCafeTaps = dailyTopPriorityCafeTaps,
   dailySchedules = 0,
   includeSemiPriority = true,
+  useLeftoverSsrForTop = false,
 ): OptimizeResultRecord {
   const stock = Object.fromEntries(
     Object.entries(inventory)
@@ -1271,6 +1485,10 @@ export function optimizeAllocation(
   if (includeSemiPriority) {
     allocateStateGroup(semiPriorityStates, stock, itemsById, evaluations)
   }
+  repairAllocationOvershoot(states, stock, itemsById, evaluations)
+  if (useLeftoverSsrForTop) {
+    allocateLeftoverSsrToTopPriority(states, stock, studentsById, itemsById)
+  }
   rebalanceEquivalentAllocationClasses(states, stock, itemsById, evaluations)
   let totalRequired = 0
   let totalAllocated = 0
@@ -1315,6 +1533,7 @@ export function optimizeAllocation(
         rarity: String(item.rarity || ''),
         gift_kind: String(item.gift_kind || 'gift'),
         quantity: Number(quantity),
+        craft_material_ok: isCraftSafeMaterial(item, studentsById),
       }
     })
 

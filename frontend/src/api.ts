@@ -129,6 +129,7 @@ interface RawApi {
     daily_other_cafe_taps?: number,
     daily_schedules?: number,
     include_semi_priority?: boolean,
+    use_leftover_ssr_for_top?: boolean,
   ): Promise<OptimizeResult>
 
   get_ui_settings(): Promise<Record<string, string>>
@@ -242,6 +243,7 @@ export const api: RawApi = {
     daily_other_cafe_taps = 0,
     daily_schedules = 0,
     include_semi_priority = true,
+    use_leftover_ssr_for_top = false,
   ) {
     return requestJson('/api/optimize', {
       method: 'POST',
@@ -250,6 +252,7 @@ export const api: RawApi = {
         daily_other_cafe_taps,
         daily_schedules,
         include_semi_priority,
+        use_leftover_ssr_for_top,
       }),
     })
   },

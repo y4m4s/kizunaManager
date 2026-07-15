@@ -22,6 +22,8 @@ type OptimizeResultsTableProps = {
 const SELECTABLE_BOX_ITEM_ID = -1001
 const SELECTABLE_BOX_LABEL = '選択式ボックス'
 const SELECTABLE_BOX_EXP = 60
+// backend の GIFT_EXP_VALUES.SSR.medium と同じ値
+const SSR_MEDIUM_EXP = 120
 const MAX_BOND_LEVEL = 100
 
 function isBouquetDisplayItem(
@@ -142,7 +144,12 @@ export function OptimizeResultsTable({
     .filter((item) => item.rarity === 'SSR')
     .reduce((sum, item) => {
       const fallback = fallbackItemsById[item.item_id]
-      return sum + (fallback?.exp_value ?? 0) * item.quantity
+      if (isBouquetDisplayItem(item, fallback)) {
+        // backend の bouquetFixedExp と同じ規則
+        const baseExp = fallback?.exp_value ?? 0
+        return sum + (baseExp === 20 ? 180 : baseExp) * item.quantity
+      }
+      return sum + SSR_MEDIUM_EXP * item.quantity
     }, 0)
   const boxExp = result.craftable_boxes.box_count * SELECTABLE_BOX_EXP
   const totalSurplusExp = purpleExp + boxExp
@@ -317,7 +324,11 @@ export function OptimizeResultsTable({
                     <div
                       key={`${item.item_id}:${item.item_name}`}
                       className={`opt-item-card ${toneClass}`}
-                      title={`${item.item_name} x${item.quantity}`}
+                      title={
+                        item.craft_material_ok
+                          ? `${item.item_name} x${item.quantity}（登録生徒に効果的な相手なし・製造に使ってOK）`
+                          : `${item.item_name} x${item.quantity}`
+                      }
                     >
                       {imageSrc ? (
                         <img
@@ -335,6 +346,9 @@ export function OptimizeResultsTable({
                           tone="gift"
                         />
                       )}
+                      {item.craft_material_ok ? (
+                        <span className="opt-item-craft-ok-badge">製造OK</span>
+                      ) : null}
                       <span className="opt-item-badge">{`x${item.quantity}`}</span>
                     </div>
                   )

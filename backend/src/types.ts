@@ -115,6 +115,7 @@ export interface OptimizeResultRecord {
     rarity: string
     gift_kind: string
     quantity: number
+    craft_material_ok: boolean
   }>
   craftable_boxes: {
     box_count: number
