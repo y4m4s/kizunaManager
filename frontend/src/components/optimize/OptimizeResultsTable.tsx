@@ -239,6 +239,9 @@ export function OptimizeResultsTable({
                     tabIndex={0}
                   >
                     <span className="opt-predicted-text">{predictedLabel}</span>
+                    <span className="opt-predicted-lack">
+                      {`不足 ${formatNumber(shortageExp)} EXP`}
+                    </span>
                     <span className="opt-shortage-card" role="tooltip">
                       <span className="opt-shortage-card-title">目標まで不足</span>
                       <span className="opt-shortage-card-row">
