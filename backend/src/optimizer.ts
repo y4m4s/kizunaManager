@@ -141,14 +141,14 @@ function plannedPassiveExp(
   dailySchedules: number,
   today = new Date(),
 ): [number, number] {
+  const days = daysUntilNextBirthday(student, today)
   const cafeExp = Math.max(0, dailyCafeTaps) * CAFE_TAP_BOND_EXP
   const scheduleCount = Math.max(0, dailySchedules)
   const scheduleExp = scheduleCount * (SCHEDULE_BOND_EXP + (SCHEDULE_BONUS_CHANCE * SCHEDULE_BONUS_EXP))
   const totalExp = cafeExp + scheduleExp
   if (totalExp <= 0) {
-    return [0, 0]
+    return [0, days]
   }
-  const days = daysUntilNextBirthday(student, today)
   return [Math.round(totalExp * days), days]
 }
 
@@ -711,10 +711,10 @@ function buildCandidate(
 function compareScores(left: number[], right: number[]): number {
   const length = Math.max(left.length, right.length)
   for (let index = 0; index < length; index += 1) {
-    const diff = (left[index] || 0) - (right[index] || 0)
-    if (diff !== 0) {
-      return diff
-    }
+    const leftValue = left[index] ?? 0
+    const rightValue = right[index] ?? 0
+    if (leftValue === rightValue) continue
+    return leftValue > rightValue ? 1 : -1
   }
   return 0
 }
@@ -1185,7 +1185,8 @@ function repairAllocationOvershoot(
   stock: Record<number, number>,
   itemsById: Record<number, ItemRecord>,
   evaluations: EvaluationCache,
-): void {
+): boolean {
+  let changed = false
   for (const state of states) {
     const need = Math.max(
       0,
@@ -1317,7 +1318,9 @@ function repairAllocationOvershoot(
     }
     state.allocated_exp = bestSum * scale
     state.remaining_exp = Math.max(0, need - state.allocated_exp)
+    changed = true
   }
+  return changed
 }
 
 function allocateLeftoverSsrToTopPriority(
@@ -1481,11 +1484,14 @@ export function optimizeAllocation(
     (state) => String(state.priority || 'priority') === 'semi_priority',
   )
 
-  allocateStateGroup(primaryStates, stock, itemsById, evaluations)
-  if (includeSemiPriority) {
-    allocateStateGroup(semiPriorityStates, stock, itemsById, evaluations)
-  }
-  repairAllocationOvershoot(states, stock, itemsById, evaluations)
+  // Repairs only reduce overshoot; another pass makes released stock available
+  // to students whose goals are still unmet, in the same priority order.
+  do {
+    allocateStateGroup(primaryStates, stock, itemsById, evaluations)
+    if (includeSemiPriority) {
+      allocateStateGroup(semiPriorityStates, stock, itemsById, evaluations)
+    }
+  } while (repairAllocationOvershoot(states, stock, itemsById, evaluations))
   if (useLeftoverSsrForTop) {
     allocateLeftoverSsrToTopPriority(states, stock, studentsById, itemsById)
   }
@@ -1493,6 +1499,7 @@ export function optimizeAllocation(
   let totalRequired = 0
   let totalAllocated = 0
   let totalPassive = 0
+  let totalUseful = 0
 
   const results = states.map((state) => {
     const currentLevel = Number(state.current_bond_level || 1)
@@ -1506,6 +1513,7 @@ export function optimizeAllocation(
     totalRequired += Number(state.required_exp || 0)
     totalAllocated += Number(state.allocated_exp || 0)
     totalPassive += passiveExp
+    totalUseful += Math.min(Number(state.required_exp || 0), Number(state.allocated_exp || 0) + passiveExp)
     return {
       ...state,
       predicted_level: predictedLevel,
@@ -1548,7 +1556,7 @@ export function optimizeAllocation(
       completion_rate:
         totalRequired === 0
           ? 0
-          : Math.min(1, (totalAllocated + totalPassive) / totalRequired),
+          : Math.min(1, totalUseful / totalRequired),
     },
     leftovers,
     craftable_boxes: {

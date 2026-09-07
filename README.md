@@ -101,16 +101,36 @@ DB に保存された画像パスが古い場所を指していても、起動�
 - DB: `data/bond_manager.db`
 - キャッシュ JSON: `data/cache/`
 - 画像: `data/images/`
+- マスター更新前の自動バックアップ: `data/backups/before-master-*.db`
+
+マスターが空、不正、または既存件数の80%未満の場合は更新を中止します。更新データから一時的に消えた生徒・贈り物も、登録情報や在庫とともに保持します。バックアップは自動削除しません。
+
+バックアップを使う場合はアプリを終了してから、対象のDBをデータ保存先の `bond_manager.db` としてコピーしてください。`bond_manager.recovered*.db` がある場合はそちらが優先されるため、復元先も確認してください。
 
 ## 保持している UI 用画像
 
-以下の 4 ファイルは `.gitignore` 例外として保持しています。
-※Schale DBから落としたものとは別途用意したものであるため。
+固定UI画像は `frontend/public/ui/` に配置し、Webビルドと配布exeに同梱します。ユーザーのdataフォルダや画像ダウンロードは不要です。
 
-- `data/images/items/item_icon_favor_selection.webp`
-- `data/images/items/Cafe_Interaction_Gift_02.png`
-- `data/images/items/Cafe_Interaction_Gift_03.png`
-- `data/images/items/Cafe_Interaction_Gift_04.png`
+- `frontend/public/ui/item_icon_favor_selection.webp`
+- `frontend/public/ui/Cafe_Interaction_Gift_01.png`
+- `frontend/public/ui/Cafe_Interaction_Gift_02.png`
+- `frontend/public/ui/Cafe_Interaction_Gift_03.png`
+- `frontend/public/ui/Cafe_Interaction_Gift_04.png`
+
+## 分配と検証
+
+分配は相性・代替品の有無・優先度を比較する逐次計算です。最優先と優先を先に処理し、準優先はその残りから配分します。同じグループでは代替性を優先して評価するため、最優先の全目標を先に満たす保証や、全体の厳密な最適解の保証はありません。端数調整で戻った在庫も再配分します。
+
+```powershell
+npm run test:backend
+frontend/node_modules/.bin/tsc -p backend/tsconfig.json
+npm run build
+npm run lint
+```
+
+DB・HTTPテストはOSの一時フォルダに保存先を明示した検証DBを作成します。通常のdataフォルダは使いません。
+
+APIはループバックのHostとOriginを検証します。本番は同一Originのみ、開発時は `http://127.0.0.1:5173` と `http://localhost:5173` も許可します。書き込みには `Content-Type: application/json` が必要です。
 
 ## ディレクトリ
 

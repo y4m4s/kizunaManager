@@ -4,7 +4,8 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http'
 import path from 'node:path'
 import { URL } from 'node:url'
 
-import { DATA_DIR, DEFAULT_PORT, FRONTEND_DIST_DIR, BASE_DIR, PRIORITY_LABELS } from './config.ts'
+import { IMAGE_DIR, DEFAULT_PORT, FRONTEND_DIST_DIR, PRIORITY_LABELS } from './config.ts'
+import { authorizeRequest, resolveSafePath } from './httpSecurity.ts'
 import { Database } from './database.ts'
 import {
   cacheIcons,
@@ -34,16 +35,9 @@ const ASSET_PREFIX = '/assets/'
 const database = new Database()
 const tasks = new TaskStore()
 
-function setCorsHeaders(response: ServerResponse): void {
-  response.setHeader('Access-Control-Allow-Origin', '*')
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
-}
-
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
   response.statusCode = statusCode
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
-  setCorsHeaders(response)
   response.end(JSON.stringify(payload))
 }
 
@@ -236,21 +230,11 @@ function contentTypeFor(filePath: string): string {
 
 async function serveFile(response: ServerResponse, filePath: string): Promise<void> {
   const stat = await fsp.stat(filePath)
+  if (!stat.isFile()) throw new Error('Not a file')
   response.statusCode = 200
   response.setHeader('Content-Type', contentTypeFor(filePath))
   response.setHeader('Content-Length', String(stat.size))
-  setCorsHeaders(response)
-  fs.createReadStream(filePath).pipe(response)
-}
-
-function resolveSafePath(rootDir: string, relativePath: string): string | null {
-  const sanitized = relativePath.replace(/^[/\\]+/, '')
-  const resolved = path.resolve(rootDir, sanitized)
-  const rootResolved = path.resolve(rootDir)
-  if (!resolved.startsWith(rootResolved)) {
-    return null
-  }
-  return resolved
+  fs.createReadStream(filePath).on('error', () => response.destroy()).pipe(response)
 }
 
 async function handleAssetRequest(url: URL, response: ServerResponse): Promise<boolean> {
@@ -258,12 +242,8 @@ async function handleAssetRequest(url: URL, response: ServerResponse): Promise<b
     return false
   }
   const relativePath = decodeURIComponent(url.pathname.slice(ASSET_PREFIX.length))
-  // data/ 配下は DATA_DIR から配信する (KIZUNA_DATA_DIR でデータ領域が
-  // リポジトリ外に移動していても画像等を解決できるようにするため)
-  const dataMatch = relativePath.match(/^data[/\\](.+)$/)
-  const filePath = dataMatch
-    ? resolveSafePath(DATA_DIR, dataMatch[1])
-    : resolveSafePath(BASE_DIR, relativePath)
+  const imageMatch = relativePath.match(/^data\/images\/((?:students|items)\/[a-zA-Z0-9_-]+\.(?:webp|png|jpg|jpeg|ico))$/)
+  const filePath = imageMatch ? resolveSafePath(IMAGE_DIR, imageMatch[1]) : null
   if (!filePath) {
     sendJson(response, 403, { error: 'Forbidden' })
     return true
@@ -284,7 +264,6 @@ async function handleApiRequest(
   if (!url.pathname.startsWith(API_PREFIX)) {
     return false
   }
-  setCorsHeaders(response)
   if (request.method === 'OPTIONS') {
     response.statusCode = 204
     response.end()
@@ -576,6 +555,10 @@ async function handleFrontendRequest(url: URL, response: ServerResponse): Promis
 }
 
 async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  if (!authorizeRequest(request, response)) {
+    sendJson(response, 403, { error: 'Forbidden' })
+    return
+  }
   const url = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`)
 
   if (await handleApiRequest(request, response, url)) {
@@ -604,10 +587,14 @@ async function start(): Promise<void> {
   })
 
   server.listen(DEFAULT_PORT, '127.0.0.1', () => {
-    console.log(`Backend server listening on http://127.0.0.1:${DEFAULT_PORT}`)
+    const address = server.address()
+    console.log(`Backend server listening on http://127.0.0.1:${typeof address === 'object' && address ? address.port : DEFAULT_PORT}`)
   })
 
+  let closing = false
   const shutdown = () => {
+    if (closing) return
+    closing = true
     server.close(() => {
       database.close()
       process.exit(0)
@@ -616,6 +603,10 @@ async function start(): Promise<void> {
 
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
+  process.on('message', (message) => {
+    if (message === 'shutdown') shutdown()
+  })
+  process.on('disconnect', shutdown)
 }
 
 await start()

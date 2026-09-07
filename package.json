@@ -11,7 +11,7 @@
     "build": "npm --prefix frontend run build",
     "start": "node --no-warnings --experimental-strip-types scripts/start.mjs",
     "lint": "npm --prefix frontend run lint",
-    "test:backend": "node --no-warnings --experimental-strip-types --test backend/src/optimizer.test.ts",
+    "test:backend": "node --no-warnings --experimental-strip-types --test backend/src/*.test.ts",
     "desktop": "npm run build && electron .",
     "desktop:dev": "electron .",
     "desktop:dist": "npm run build && electron-builder --win"

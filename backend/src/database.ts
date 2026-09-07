@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 
 import {
@@ -87,11 +88,13 @@ export class Database {
       return false
     }
     try {
-      const db = new DatabaseSync(targetPath)
-      db.exec('PRAGMA journal_mode = MEMORY;')
-      db.prepare('SELECT COUNT(*) AS count FROM sqlite_master').get()
-      db.close()
-      return true
+      const db = new DatabaseSync(targetPath, { readOnly: true })
+      try {
+        db.prepare('SELECT COUNT(*) AS count FROM sqlite_master').get()
+        return true
+      } finally {
+        db.close()
+      }
     } catch {
       return false
     }
@@ -99,7 +102,8 @@ export class Database {
 
   private openConnection(targetPath: string): DatabaseSync {
     const db = new DatabaseSync(targetPath)
-    db.exec('PRAGMA journal_mode = MEMORY;')
+    db.exec('PRAGMA journal_mode = DELETE;')
+    db.exec('PRAGMA synchronous = FULL;')
     db.exec('PRAGMA foreign_keys = ON;')
     return db
   }
@@ -372,59 +376,81 @@ export class Database {
     items: Array<Record<string, unknown>>,
     source: string,
   ): void {
-    this.db.exec('PRAGMA foreign_keys = OFF')
-    try {
-      this.transaction(() => {
-        this.run('DELETE FROM master_students')
-        this.run('DELETE FROM master_items')
-
-        const studentInsert = this.db.prepare(`
-          INSERT INTO master_students(
-            id, name, school, icon_path, favor_item_tags, favor_item_unique_tags, raw_json
-          )
-          VALUES(?, ?, ?, ?, ?, ?, ?)
-        `)
-        for (const student of students) {
-          studentInsert.run(
-            Number(student.id),
-            String(student.name || ''),
-            normalizeSchoolName(String(student.school || '')),
-            String(student.icon_path || ''),
-            this.json(student.favor_item_tags || []),
-            this.json(student.favor_item_unique_tags || []),
-            this.json(student.raw_json || {}),
-          )
+    const counts = this.getMasterCounts()
+    for (const [label, rows, previousCount] of [
+      ['生徒', students, counts.students],
+      ['贈り物', items, counts.items],
+    ] as const) {
+      const ids = new Set<number>()
+      if (!rows.length || rows.length < previousCount * 0.8) {
+        throw new Error(`${label}データが空、または件数が大幅に減少しています。更新を中止しました。`)
+      }
+      for (const row of rows) {
+        const id = Number(row.id)
+        if (!Number.isSafeInteger(id) || id <= 0 || ids.has(id) || !String(row.name || '').trim()) {
+          throw new Error(`${label}データに不正なID・重複・空の名前があります。`)
         }
-
-        const itemInsert = this.db.prepare(`
-          INSERT INTO master_items(
-            id, name, tags, rarity, category, exp_value, gift_kind, icon_name, icon_path, raw_json
-          )
-          VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `)
-        for (const item of items) {
-          itemInsert.run(
-            Number(item.id),
-            String(item.name || ''),
-            this.json(item.tags || []),
-            String(item.rarity || ''),
-            String(item.category || ''),
-            Number(item.exp_value || 0),
-            String(item.gift_kind || 'gift'),
-            String(item.icon_name || ''),
-            String(item.icon_path || ''),
-            this.json(item.raw_json || {}),
-          )
-        }
-
-        this.run('DELETE FROM user_students WHERE student_id NOT IN (SELECT id FROM master_students)')
-        this.run('DELETE FROM user_plans WHERE student_id NOT IN (SELECT id FROM master_students)')
-        this.run('DELETE FROM user_inventory WHERE item_id NOT IN (SELECT id FROM master_items)')
-      })
-    } finally {
-      this.db.exec('PRAGMA foreign_keys = ON')
+        ids.add(id)
+      }
     }
-    this.setMeta('master_source', source)
+    if (counts.students || counts.items) {
+      const backupDir = path.join(path.dirname(this.dbPath), 'backups')
+      fs.mkdirSync(backupDir, { recursive: true })
+      const backupPath = path.join(backupDir, `before-master-${Date.now()}-${randomUUID()}.db`)
+      this.db.prepare('VACUUM INTO ?').run(backupPath)
+    }
+    this.transaction(() => {
+      const studentInsert = this.db.prepare(`
+        INSERT INTO master_students(
+          id, name, school, icon_path, favor_item_tags, favor_item_unique_tags, raw_json
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name, school = excluded.school, icon_path = excluded.icon_path,
+          favor_item_tags = excluded.favor_item_tags,
+          favor_item_unique_tags = excluded.favor_item_unique_tags, raw_json = excluded.raw_json
+      `)
+      for (const student of students) {
+        studentInsert.run(
+          Number(student.id),
+          String(student.name || ''),
+          normalizeSchoolName(String(student.school || '')),
+          String(student.icon_path || ''),
+          this.json(student.favor_item_tags || []),
+          this.json(student.favor_item_unique_tags || []),
+          this.json(student.raw_json || {}),
+        )
+      }
+
+      const itemInsert = this.db.prepare(`
+        INSERT INTO master_items(
+          id, name, tags, rarity, category, exp_value, gift_kind, icon_name, icon_path, raw_json
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name, tags = excluded.tags, rarity = excluded.rarity,
+          category = excluded.category, exp_value = excluded.exp_value,
+          gift_kind = excluded.gift_kind, icon_name = excluded.icon_name,
+          icon_path = excluded.icon_path, raw_json = excluded.raw_json
+      `)
+      for (const item of items) {
+        itemInsert.run(
+          Number(item.id),
+          String(item.name || ''),
+          this.json(item.tags || []),
+          String(item.rarity || ''),
+          String(item.category || ''),
+          Number(item.exp_value || 0),
+          String(item.gift_kind || 'gift'),
+          String(item.icon_name || ''),
+          String(item.icon_path || ''),
+          this.json(item.raw_json || {}),
+        )
+      }
+
+      // Keep missing master rows and their user data until a later valid update.
+      this.setMeta('master_source', source)
+    })
   }
 
   searchStudents(

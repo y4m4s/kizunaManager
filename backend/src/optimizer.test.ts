@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { calculateGiftExp, optimizeAllocation } from './optimizer.ts'
+import { calcRequiredExp, projectLevelAfterGain } from './bondCalculator.ts'
 import type {
   ItemRecord,
   OptimizeResultRecord,
@@ -382,4 +383,100 @@ test('repairs greedy overshoot with an exact bounded subset', () => {
     [[102, 2]],
   )
   assert.equal(result.leftovers.find((leftover) => leftover.item_id === 101)?.quantity, 1)
+})
+
+test('compares gift value when both candidates have no alternatives', () => {
+  const result = optimizeAllocation(
+    [plan(1, 1, 300), plan(2, 2, 240)], { 101: 1 },
+    { 1: student(1, ['a']), 2: student(2, ['a', 'b']) },
+    { 101: item(101, 'SSR', 'SSR', ['a', 'b']) },
+  )
+  assert.equal(result.results.find((row) => row.student_id === 1)?.allocated_exp, 0)
+  assert.equal(result.results.find((row) => row.student_id === 2)?.allocated_exp, 240)
+})
+
+test('reallocates stock released by overshoot repair to semi priority', () => {
+  const result = optimizeAllocation(
+    [plan(1, 1, 120, 'top_priority'), plan(2, 2, 40, 'semi_priority')],
+    { 101: 1, 102: 2 },
+    { 1: student(1, ['a', 'b', 'c']), 2: student(2, ['c']) },
+    { 101: item(101, 'X', 'SR', ['a', 'b', 'c']), 102: item(102, 'Y', 'SR', ['a', 'b']) },
+  )
+  assert.ok(result.results.every((row) => row.remaining_exp === 0))
+  assert.equal(result.results.find((row) => row.student_id === 2)?.allocated_items[0].item_id, 101)
+  assert.deepEqual(result.leftovers, [])
+})
+
+test('calculates birthday days even with zero daily EXP', () => {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const birthday = `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}`
+  const result = optimizeAllocation([plan(1, 1, 40)], {}, { 1: { ...student(1), birthday } }, {})
+  assert.equal(result.results[0].days_until_birthday, 1)
+  assert.equal(result.results[0].passive_exp, 0)
+})
+
+test('does not count one student surplus toward another student completion', () => {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const birthday = `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}`
+  const result = optimizeAllocation(
+    [plan(1, 1, 15), plan(2, 2, 15)], {},
+    { 1: { ...student(1), birthday }, 2: student(2) }, {}, 2, 2,
+  )
+  assert.equal(result.summary.completion_rate, 0.5)
+  assert.equal(result.results.find((row) => row.student_id === 2)?.remaining_exp, 15)
+})
+
+test('required EXP and level projection agree at every target boundary', () => {
+  for (let current = 1; current < 100; current += 1) {
+    for (let target = current + 1; target <= 100; target += 1) {
+      const required = calcRequiredExp(current, 0, target)
+      assert.deepEqual(projectLevelAfterGain(current, 0, required), [target, 0])
+      assert.ok(projectLevelAfterGain(current, 0, required - 1)[0] < target)
+    }
+  }
+})
+
+test('preserves stock and EXP across varied preferences, priorities and options', () => {
+  let seed = 20260906
+  const random = (limit: number) => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    return seed % limit
+  }
+  for (let sample = 0; sample < 1000; sample += 1) {
+    const students: Record<number, StudentRecord> = {}
+    const items: Record<number, ItemRecord> = {}
+    const inventory: Record<number, number> = {}
+    const plans: PlanRecord[] = []
+    for (let id = 1; id <= 4; id += 1) {
+      students[id] = student(id, ['a', 'b', 'c'].filter(() => random(2)))
+      plans.push(plan(id, id, random(400) + 1, PRIORITY_SCORE_ORDER[random(3)]))
+    }
+    for (let id = 101; id <= 105; id += 1) {
+      items[id] = item(id, String(id), random(2) ? 'SR' : 'SSR', ['a', 'b', 'c'].filter(() => random(2)))
+      inventory[id] = random(5)
+    }
+    const before = JSON.stringify({ students, items, inventory, plans })
+    const includeSemi = Boolean(random(2))
+    const result = optimizeAllocation(plans, inventory, students, items, 0, 0, 0, includeSemi, Boolean(random(2)))
+    const used: Record<number, number> = {}
+    for (const row of result.results) {
+      let total = 0
+      for (const allocation of row.allocated_items) {
+        assert.ok(Number.isInteger(allocation.count) && allocation.count > 0)
+        assert.equal(allocation.exp_per_item, calculateGiftExp(students[row.student_id], items[allocation.item_id], items)[1])
+        assert.equal(allocation.total_exp, allocation.exp_per_item * allocation.count)
+        total += allocation.total_exp
+        used[allocation.item_id] = (used[allocation.item_id] || 0) + allocation.count
+      }
+      assert.equal(row.allocated_exp, total)
+      assert.equal(row.remaining_exp, Math.max(0, row.required_exp - total))
+      if (!includeSemi && row.priority === 'semi_priority') assert.equal(total, 0)
+    }
+    for (const [id, count] of Object.entries(inventory)) {
+      assert.equal((used[Number(id)] || 0) + (result.leftovers.find((row) => row.item_id === Number(id))?.quantity || 0), count)
+    }
+    assert.equal(JSON.stringify({ students, items, inventory, plans }), before)
+  }
 })

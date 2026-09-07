@@ -1,6 +1,4 @@
-import { dataAssetUrl } from '../api'
-
-const ITEM_IMAGE_DIR = 'images/items'
+const ITEM_IMAGE_DIR = `${import.meta.env.BASE_URL}ui`
 
 export type EffectIconKey = 'small' | 'medium' | 'large' | 'extra_large'
 
@@ -13,11 +11,9 @@ const EFFECT_ICON_FILES: Record<EffectIconKey, string> = {
 
 export function effectIconUrl(effect: string): string | null {
   if (effect in EFFECT_ICON_FILES) {
-    return dataAssetUrl(`${ITEM_IMAGE_DIR}/${EFFECT_ICON_FILES[effect as EffectIconKey]}`)
+    return `${ITEM_IMAGE_DIR}/${EFFECT_ICON_FILES[effect as EffectIconKey]}`
   }
   return null
 }
 
-export const SELECTABLE_BOX_ICON_URL = dataAssetUrl(
-  `${ITEM_IMAGE_DIR}/item_icon_favor_selection.webp`,
-)
+export const SELECTABLE_BOX_ICON_URL = `${ITEM_IMAGE_DIR}/item_icon_favor_selection.webp`

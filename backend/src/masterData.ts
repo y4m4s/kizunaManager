@@ -244,10 +244,11 @@ export async function downloadMasterData(
     for (const candidate of masterUrlCandidates(name)) {
       try {
         const payload = await fetchRemoteJson(candidate.url, timeout)
+        const records = name === 'students' ? extractStudents(payload) : extractItems(payload)
+        if (!records.length) throw new Error(`${label}が空、または形式が不正です。`)
         payloads[name] = payload
         resolvedSources[name] = candidate.source
         resolvedUrls[name] = candidate.url
-        await saveJson(path.join(CACHE_DIR, `${name}.json`), payload)
         emitProgress(progressCallback, `${label}を取得しました。`, index + 1, totalSteps)
         lastError = null
         break
@@ -273,6 +274,10 @@ export async function downloadMasterData(
     }
   }
 
+  // Do not overwrite a usable cache when the other resource fails to download.
+  for (const name of MASTER_RESOURCES) {
+    await saveJson(path.join(CACHE_DIR, `${name}.json`), payloads[name])
+  }
   await saveCacheMeta({
     fetched_at: utcNowIso(),
     source: primarySource,

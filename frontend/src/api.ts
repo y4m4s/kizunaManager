@@ -45,9 +45,8 @@ export function assetUrl(filePath: string | undefined | null): string | null {
     return null
   }
   const posix = filePath.replace(/\\/g, '/')
-  const dataIndex = posix.indexOf('/data/')
-  const relative = dataIndex !== -1 ? posix.slice(dataIndex + 1) : posix.replace(/^[/\\]+/, '')
-  return `${API_BASE}/assets/${relative}`
+  const match = posix.match(/(?:^|\/)images\/((?:students|items)\/[^/]+)$/)
+  return match ? `${API_BASE}/assets/data/images/${match[1]}` : null
 }
 
 export function dataAssetUrl(relativePath: string): string {

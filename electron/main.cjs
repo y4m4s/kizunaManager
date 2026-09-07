@@ -102,7 +102,7 @@ function startBackend(port) {
         PORT: String(port),
         KIZUNA_DATA_DIR: dataDir(),
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       windowsHide: true,
     },
   )
@@ -225,14 +225,26 @@ if (!gotLock) {
     app.quit()
   })
 
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
+    if (!backendProcess) return
+    event.preventDefault()
+    if (quitting) return
     quitting = true
-  })
-
-  app.on('will-quit', () => {
-    if (backendProcess) {
-      backendProcess.kill()
-      backendProcess = null
+    const child = backendProcess
+    const timeout = setTimeout(() => {
+      debugLog('backend shutdown timed out; terminating')
+      child.kill()
+    }, 5_000)
+    child.once('exit', () => {
+      clearTimeout(timeout)
+      app.quit()
+    })
+    if (child.connected) {
+      child.send('shutdown', (error) => {
+        if (error) debugLog(`backend shutdown message: ${error.message}`)
+      })
+    } else {
+      child.kill()
     }
   })
 }
