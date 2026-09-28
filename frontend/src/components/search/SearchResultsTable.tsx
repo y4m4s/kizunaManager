@@ -3,8 +3,10 @@ import { SEARCH_EFFECT_COLUMNS } from '../../constants'
 import type { SearchResult, SlimItem } from '../../types'
 import { effectIconUrl } from '../../lib/uiAssets'
 import { IconThumb } from '../common/IconThumb'
+import { StudentGiftHoverCard } from '../common/StudentGiftHoverCard'
 
 type SearchResultsTableProps = {
+  giftRefreshKey?: number | string
   hideMedium: boolean
   mode: 'gift' | 'student'
   rows: SearchResult[]
@@ -32,6 +34,7 @@ function GiftCell({ items }: { items: SlimItem[] }) {
 }
 
 export function SearchResultsTable({
+  giftRefreshKey,
   hideMedium,
   mode,
   rows,
@@ -89,8 +92,13 @@ export function SearchResultsTable({
           >
             <div className="result-student-cell" data-label="生徒">
               <div className="result-student-main">
-                <IconThumb filePath={row.icon_path} label={row.student_name} size={40} tone="student" />
-                <strong>{row.student_name}</strong>
+                <StudentGiftHoverCard
+                  iconPath={row.icon_path}
+                  iconSize={40}
+                  refreshKey={giftRefreshKey}
+                  studentId={row.student_id}
+                  studentName={row.student_name}
+                />
               </div>
               {mode === 'gift' ? (
                 <button

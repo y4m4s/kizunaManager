@@ -301,6 +301,7 @@ export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScree
 
       <div ref={resultsExportRef}>
         <SearchResultsTable
+          giftRefreshKey={refreshToken}
           hideMedium={hideMedium}
           mode={activeTab}
           rows={visibleResults}
