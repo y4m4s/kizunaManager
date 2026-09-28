@@ -703,8 +703,11 @@
 }
 
 .results-shell {
+  margin-inline: auto;
+  max-width: var(--search-max-width, none);
   overflow: hidden;
   padding: 0;
+  width: 100%;
 }
 
 .results-grid {
@@ -766,20 +769,45 @@
 
 .result-student-cell {
   align-items: center;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  /* 中央の枠を固定幅にして、名前の長さに関係なくアイコン位置を揃える */
+  grid-template-columns: minmax(0, 1fr) var(--search-student-inner, 210px) minmax(0, 1fr);
   min-height: 68px;
-  padding: 12px 14px;
+  padding: 12px 0;
 }
 
 .result-student-main {
   align-items: center;
   display: flex;
   gap: 10px;
+  grid-column: 2;
   min-width: 0;
 }
 
+.result-student-main .student-gift-hover-name {
+  /* 検索結果では名前を省略しない (列幅は名前に合わせて広がる) */
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.result-student-main .student-gift-hover-trigger {
+  max-width: none;
+}
+
+.result-hide-button {
+  align-items: center;
+  display: inline-flex;
+  grid-column: 3;
+  height: 32px;
+  justify-content: center;
+  justify-self: end;
+  margin-right: 2px;
+  width: 24px;
+}
+
 .result-effect-cell {
+  align-items: center;
+  display: flex;
   min-height: 68px;
   padding: 10px 12px;
 }
@@ -2682,6 +2710,7 @@
     background: transparent;
     border: none;
     box-shadow: none;
+    max-width: none;
     overflow: visible;
     padding: 0;
   }
@@ -2718,6 +2747,18 @@
     padding: 12px 14px;
   }
 
+  .result-student-cell {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .result-student-main {
+    grid-column: 1;
+  }
+
+  .result-hide-button {
+    grid-column: 2;
+  }
+
   .results-body .result-row .result-student-cell {
     border-bottom: 1px solid #e5eef8;
   }
@@ -2728,6 +2769,10 @@
 
   .results-body .result-row .result-effect-cell:last-child {
     border-bottom: none;
+  }
+
+  .result-effect-cell {
+    display: block;
   }
 
   .result-effect-cell::before {

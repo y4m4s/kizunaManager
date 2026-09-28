@@ -1,9 +1,19 @@
-import type { CSSProperties } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties } from 'react'
 import { SEARCH_EFFECT_COLUMNS } from '../../constants'
 import type { SearchResult, SlimItem } from '../../types'
 import { effectIconUrl } from '../../lib/uiAssets'
 import { IconThumb } from '../common/IconThumb'
 import { StudentGiftHoverCard } from '../common/StudentGiftHoverCard'
+
+// 生徒列は最小幅を基本に、名前が収まらない場合だけ広げる。
+// 効果列(特大/大/中)は等幅のまま上限を設けて、結果領域全体を必要以上に広げない
+const STUDENT_COLUMN_MIN_WIDTH = 260
+const EFFECT_COLUMN_MAX_WIDTH = 280
+// 生徒欄の中央寄せ用: アイコン(40) + 間隔(10) + 表示中で最長の名前 を1つの枠として中央に置く。
+// 枠内は左揃えなので、名前の長さが違ってもアイコンの位置は全行で揃う
+const STUDENT_ICON_BLOCK_WIDTH = 50
+// 枠の左右に確保する余白 (右側は非表示ボタンの置き場を兼ねる)
+const STUDENT_SIDE_GUTTER = 40
 
 type SearchResultsTableProps = {
   giftRefreshKey?: number | string
@@ -40,9 +50,42 @@ export function SearchResultsTable({
   rows,
   onHideRow,
 }: SearchResultsTableProps) {
+  const shellRef = useRef<HTMLElement | null>(null)
   const visibleColumns = SEARCH_EFFECT_COLUMNS.filter(
     (column) => !(hideMedium && column.key === 'medium'),
   )
+  const layoutStyle = {
+    '--search-columns': `var(--search-student-col, ${STUDENT_COLUMN_MIN_WIDTH}px) repeat(${visibleColumns.length}, minmax(180px, 1fr))`,
+    '--search-max-width': `calc(var(--search-student-col, ${STUDENT_COLUMN_MIN_WIDTH}px) + ${EFFECT_COLUMN_MAX_WIDTH * visibleColumns.length}px)`,
+  } as CSSProperties
+
+  useLayoutEffect(() => {
+    const shell = shellRef.current
+    if (!shell) return
+    let disposed = false
+    const measure = () => {
+      if (disposed) return
+      const names = shell.querySelectorAll<HTMLElement>('.result-student-main .student-gift-hover-name')
+      let longest = 0
+      names.forEach((name) => {
+        // scrollWidth は整数に丸められるため、小数幅の文字列でも欠けないよう実寸を使う
+        const range = document.createRange()
+        range.selectNodeContents(name)
+        longest = Math.max(longest, range.getBoundingClientRect().width, name.scrollWidth)
+      })
+      // 端数で折り返し・欠けが出ないよう少し余裕を持たせる
+      const inner = Math.ceil(STUDENT_ICON_BLOCK_WIDTH + longest + 2)
+      const column = Math.max(STUDENT_COLUMN_MIN_WIDTH, inner + STUDENT_SIDE_GUTTER * 2)
+      shell.style.setProperty('--search-student-inner', `${inner}px`)
+      shell.style.setProperty('--search-student-col', `${column}px`)
+    }
+    measure()
+    // Webフォント読み込み後に名前の幅が変わる場合があるので再計測
+    void document.fonts?.ready.then(measure)
+    return () => {
+      disposed = true
+    }
+  }, [rows, hideMedium])
 
   if (!rows.length) {
     return (
@@ -55,15 +98,8 @@ export function SearchResultsTable({
   }
 
   return (
-    <section className="card-shell results-shell">
-      <div
-        className="results-grid results-grid-header"
-        style={
-          {
-            '--search-columns': `minmax(220px, 1.4fr) repeat(${visibleColumns.length}, minmax(180px, 1fr))`,
-          } as CSSProperties
-        }
-      >
+    <section ref={shellRef} className="card-shell results-shell" style={layoutStyle}>
+      <div className="results-grid results-grid-header">
         <div className="result-header-cell">生徒</div>
         {visibleColumns.map((column) => (
           <div key={column.key} className="result-header-cell">
@@ -81,15 +117,7 @@ export function SearchResultsTable({
 
       <div className="results-body">
         {rows.map((row) => (
-          <div
-            key={row.student_id}
-            className="results-grid result-row"
-            style={
-              {
-                '--search-columns': `minmax(220px, 1.4fr) repeat(${visibleColumns.length}, minmax(180px, 1fr))`,
-              } as CSSProperties
-            }
-          >
+          <div key={row.student_id} className="results-grid result-row">
             <div className="result-student-cell" data-label="生徒">
               <div className="result-student-main">
                 <StudentGiftHoverCard
@@ -103,7 +131,7 @@ export function SearchResultsTable({
               {mode === 'gift' ? (
                 <button
                   aria-label={`${row.student_name}を非表示`}
-                  className="ghost-icon-button"
+                  className="ghost-icon-button result-hide-button"
                   type="button"
                   onClick={() => onHideRow(row.student_id)}
                 >
