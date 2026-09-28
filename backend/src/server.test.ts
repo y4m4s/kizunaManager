@@ -71,6 +71,17 @@ for (const environment of ['production', 'development']) {
       assert.equal((await fetch(`${origin}${url}`)).status, 403, url)
     }
     assert.equal(await (await fetch(`${origin}/assets/data/images/items/test.png`)).text(), 'test image')
+    const snapshotHeaders = { Origin: origin, 'Content-Type': 'application/json' }
+    assert.equal((await fetch(`${origin}/api/optimize-snapshots`, { method: 'POST', headers: snapshotHeaders, body: '{"result":{"results":"bad"}}' })).status, 400)
+    const optimized = await (await fetch(`${origin}/api/optimize`, { method: 'POST', headers: snapshotHeaders, body: '{}' })).json()
+    const savedSnapshot = await (await fetch(`${origin}/api/optimize-snapshots`, { method: 'POST', headers: snapshotHeaders, body: JSON.stringify({ label: 'memo', params: { daily_schedules: 2 }, result: optimized }) })).json()
+    assert.equal(savedSnapshot.ok, true)
+    const listed = await (await fetch(`${origin}/api/optimize-snapshots`)).json()
+    assert.equal(listed.length, 1)
+    assert.equal(listed[0].params.daily_schedules, 2)
+    assert.equal((await (await fetch(`${origin}/api/optimize-snapshots/${savedSnapshot.id}`)).json()).label, 'memo')
+    assert.equal((await fetch(`${origin}/api/optimize-snapshots/${savedSnapshot.id}`, { method: 'DELETE', headers: snapshotHeaders })).status, 200)
+    assert.equal((await fetch(`${origin}/api/optimize-snapshots/${savedSnapshot.id}`)).status, 404)
     assert.equal(resolveSafePath(path.join(directory, 'data'), '../data-sibling/probe.txt'), null)
     child.send('shutdown')
     const [code] = await exited

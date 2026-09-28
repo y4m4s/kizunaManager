@@ -22,7 +22,15 @@ import {
   calcRequiredExp,
   progressRatio,
 } from './bondCalculator.ts'
-import type { ItemRecord, PlanRecord, StudentRecord } from './types.ts'
+import type {
+  ItemRecord,
+  OptimizeResultRecord,
+  OptimizeSnapshotParams,
+  OptimizeSnapshotRecord,
+  OptimizeSnapshotSummary,
+  PlanRecord,
+  StudentRecord,
+} from './types.ts'
 
 type SqlParams = Record<string, SQLInputValue> | SQLInputValue[] | undefined
 type RowRecord = Record<string, unknown>
@@ -277,6 +285,15 @@ export class Database {
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS optimize_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        student_count INTEGER NOT NULL DEFAULT 0,
+        params_json TEXT NOT NULL,
+        result_json TEXT NOT NULL
       );
     `)
     this.migrateLegacyData()
@@ -697,6 +714,76 @@ export class Database {
 
   deletePlan(planId: number): void {
     this.run('DELETE FROM user_plans WHERE id = ?', [planId])
+  }
+
+  private snapshotSummaryFromRow(row: RowRecord): OptimizeSnapshotSummary {
+    return {
+      id: Number(row.id),
+      created_at: String(row.created_at || ''),
+      label: String(row.label || ''),
+      student_count: Number(row.student_count || 0),
+      params: this.loads<OptimizeSnapshotParams>(row.params_json, {
+        daily_top_priority_cafe_taps: 0,
+        daily_other_cafe_taps: 0,
+        daily_schedules: 0,
+        include_semi_priority: true,
+        use_leftover_ssr_for_top: false,
+      }),
+    }
+  }
+
+  listOptimizeSnapshots(): OptimizeSnapshotSummary[] {
+    return this.all(
+      `
+        SELECT id, created_at, label, student_count, params_json
+        FROM optimize_snapshots
+        ORDER BY created_at DESC, id DESC
+      `,
+    ).map((row) => this.snapshotSummaryFromRow(row))
+  }
+
+  getOptimizeSnapshot(snapshotId: number): OptimizeSnapshotRecord | null {
+    const row = this.get('SELECT * FROM optimize_snapshots WHERE id = ?', [snapshotId])
+    if (!row) {
+      return null
+    }
+    const result = this.loads<OptimizeResultRecord | null>(row.result_json, null)
+    if (!result || !Array.isArray(result.results)) {
+      return null
+    }
+    return { ...this.snapshotSummaryFromRow(row), result }
+  }
+
+  saveOptimizeSnapshot(
+    result: OptimizeResultRecord,
+    params: OptimizeSnapshotParams,
+    label = '',
+    createdAt: string = new Date().toISOString(),
+  ): number {
+    this.run(
+      `
+        INSERT INTO optimize_snapshots(created_at, label, student_count, params_json, result_json)
+        VALUES(?, ?, ?, ?, ?)
+      `,
+      [
+        createdAt,
+        label.trim().slice(0, 100),
+        result.results.length,
+        this.json(params),
+        this.json(result),
+      ],
+    )
+    const inserted = this.get<{ id: number }>('SELECT last_insert_rowid() AS id')
+    return Number(inserted?.id || 0)
+  }
+
+  deleteOptimizeSnapshot(snapshotId: number): boolean {
+    const existing = this.get('SELECT id FROM optimize_snapshots WHERE id = ?', [snapshotId])
+    if (!existing) {
+      return false
+    }
+    this.run('DELETE FROM optimize_snapshots WHERE id = ?', [snapshotId])
+    return true
   }
 
   snapshotForOptimizer(): [

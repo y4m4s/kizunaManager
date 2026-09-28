@@ -53,3 +53,40 @@ test('master refresh rejects incomplete data, backs up and preserves user data',
     assert.deepEqual(check.prepare('PRAGMA foreign_key_check').all(), [])
   } finally { check.close() }
 })
+
+test('optimize snapshots can be saved, listed, loaded and deleted', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kizuna-db-test-'))
+  const db = new Database(path.join(directory, 'test.db'))
+  t.after(() => {
+    db.close()
+    fs.rmSync(directory, { recursive: true, force: true })
+  })
+  db.initialize()
+  const params = {
+    daily_top_priority_cafe_taps: 4,
+    daily_other_cafe_taps: 2,
+    daily_schedules: 3,
+    include_semi_priority: true,
+    use_leftover_ssr_for_top: false,
+  }
+  const result = {
+    results: [{ student_id: 1, current_bond_level: 20, predicted_level: 25 }],
+    summary: { total_required_exp: 1, total_allocated_exp: 1, total_passive_exp: 0, completion_rate: 1 },
+    leftovers: [],
+    craftable_boxes: { box_count: 0, source_item_count: 0 },
+  } as unknown as Parameters<Database['saveOptimizeSnapshot']>[0]
+
+  const olderId = db.saveOptimizeSnapshot(result, params, '  first  ', '2026-09-01T03:00:00.000Z')
+  const newerId = db.saveOptimizeSnapshot(result, params, '', '2026-09-20T03:00:00.000Z')
+  assert.deepEqual(db.listOptimizeSnapshots().map((row) => row.id), [newerId, olderId])
+  const loaded = db.getOptimizeSnapshot(olderId)
+  assert.equal(loaded?.label, 'first')
+  assert.equal(loaded?.student_count, 1)
+  assert.deepEqual(loaded?.params, params)
+  assert.equal(loaded?.result.results[0].predicted_level, 25)
+
+  assert.equal(db.deleteOptimizeSnapshot(olderId), true)
+  assert.equal(db.deleteOptimizeSnapshot(olderId), false)
+  assert.equal(db.getOptimizeSnapshot(olderId), null)
+  assert.deepEqual(db.listOptimizeSnapshots().map((row) => row.id), [newerId])
+})

@@ -22,6 +22,8 @@ import {
 import { TaskStore } from './tasks.ts'
 import type {
   ItemRecord,
+  OptimizeResultRecord,
+  OptimizeSnapshotParams,
   PlanRecord,
   SearchResultRecord,
   SlimItemRecord,
@@ -198,6 +200,41 @@ function listPlansWithLabels(): Array<PlanRecord & { priority_label: string }> {
     ...plan,
     priority_label: PRIORITY_LABELS[plan.priority] || plan.priority,
   }))
+}
+
+function normalizeSnapshotParams(raw: unknown): OptimizeSnapshotParams {
+  const source = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const count = (value: unknown) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0
+  }
+  return {
+    daily_top_priority_cafe_taps: count(source.daily_top_priority_cafe_taps),
+    daily_other_cafe_taps: count(source.daily_other_cafe_taps),
+    daily_schedules: count(source.daily_schedules),
+    include_semi_priority: source.include_semi_priority !== false,
+    use_leftover_ssr_for_top: source.use_leftover_ssr_for_top === true,
+  }
+}
+
+function isOptimizeResultPayload(raw: unknown): raw is OptimizeResultRecord {
+  if (!raw || typeof raw !== 'object') {
+    return false
+  }
+  const candidate = raw as Partial<OptimizeResultRecord>
+  return (
+    Array.isArray(candidate.results) &&
+    candidate.results.every(
+      (row) =>
+        row !== null &&
+        typeof row === 'object' &&
+        Number.isSafeInteger(Number(row.student_id)) &&
+        Number.isFinite(Number(row.current_bond_level)) &&
+        Number.isFinite(Number(row.predicted_level)),
+    ) &&
+    typeof candidate.summary === 'object' &&
+    candidate.summary !== null
+  )
 }
 
 function contentTypeFor(filePath: string): string {
@@ -494,6 +531,46 @@ async function handleApiRequest(
         body.use_leftover_ssr_for_top === true,
       ),
     )
+    return true
+  }
+
+  if (pathname === '/api/optimize-snapshots' && method === 'GET') {
+    sendJson(response, 200, database.listOptimizeSnapshots())
+    return true
+  }
+
+  if (pathname === '/api/optimize-snapshots' && method === 'POST') {
+    const body = await readJsonBody<{
+      label?: string
+      params?: unknown
+      result?: unknown
+    }>(request)
+    if (!isOptimizeResultPayload(body.result)) {
+      sendJson(response, 400, { error: '保存する最適化結果が不正です。' })
+      return true
+    }
+    const snapshotId = database.saveOptimizeSnapshot(
+      body.result,
+      normalizeSnapshotParams(body.params),
+      String(body.label || ''),
+    )
+    sendJson(response, 200, { ok: true, id: snapshotId })
+    return true
+  }
+
+  const snapshotMatch = pathname.match(/^\/api\/optimize-snapshots\/(\d+)$/)
+  if (snapshotMatch && method === 'GET') {
+    const snapshot = database.getOptimizeSnapshot(Number(snapshotMatch[1]))
+    if (!snapshot) {
+      sendJson(response, 404, { error: '最適化履歴が見つかりません。' })
+      return true
+    }
+    sendJson(response, 200, snapshot)
+    return true
+  }
+  if (snapshotMatch && method === 'DELETE') {
+    const deleted = database.deleteOptimizeSnapshot(Number(snapshotMatch[1]))
+    sendJson(response, deleted ? 200 : 404, deleted ? { ok: true } : { error: '最適化履歴が見つかりません。' })
     return true
   }
 

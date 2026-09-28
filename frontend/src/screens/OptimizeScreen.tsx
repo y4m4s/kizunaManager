@@ -2,7 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { PRIORITY_SORT_ORDER } from '../constants'
 import { formatNumber } from '../lib/bond'
-import type { Item, OptimizeResult, PriorityKey, Student } from '../types'
+import type {
+  Item,
+  OptimizeResult,
+  OptimizeSnapshot,
+  OptimizeSnapshotParams,
+  OptimizeSnapshotSummary,
+  PriorityKey,
+  Student,
+} from '../types'
+import { OptimizeComparePanel } from '../components/optimize/OptimizeComparePanel'
+import { OptimizeHistoryModal } from '../components/optimize/OptimizeHistoryModal'
 import { OptimizeResultsTable } from '../components/optimize/OptimizeResultsTable'
 
 type OptimizeScreenProps = {
@@ -61,11 +71,80 @@ export function OptimizeScreen({
   const [loading, setLoading] = useState(true)
   const [optimizing, setOptimizing] = useState(false)
   const [prioritySavingStudentId, setPrioritySavingStudentId] = useState<number | null>(null)
+  const [resultParams, setResultParams] = useState<OptimizeSnapshotParams | null>(null)
+  const [snapshots, setSnapshots] = useState<OptimizeSnapshotSummary[]>([])
+  const [compareSnapshot, setCompareSnapshot] = useState<OptimizeSnapshot | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyError, setHistoryError] = useState('')
+  const [savedResult, setSavedResult] = useState<OptimizeResult | null>(null)
+  const [quickSaving, setQuickSaving] = useState(false)
+  const currentSaved = result !== null && savedResult === result
   const dailyScheduleExp = parseCountInput(dailySchedules) * SCHEDULE_EXPECTED_EXP
   const topPriorityDailyExp =
     parseCountInput(dailyTopPriorityCafeTaps) * CAFE_TAP_EXP + dailyScheduleExp
   const otherPriorityDailyExp =
     parseCountInput(dailyOtherCafeTaps) * CAFE_TAP_EXP + dailyScheduleExp
+
+  async function refreshSnapshots() {
+    try {
+      const rows = await api.list_optimize_snapshots()
+      setSnapshots(Array.isArray(rows) ? rows : [])
+    } catch {
+      setSnapshots([])
+    }
+  }
+
+  async function openCompare(snapshotId: number) {
+    setHistoryError('')
+    try {
+      const snapshot = await api.get_optimize_snapshot(snapshotId)
+      setCompareSnapshot(snapshot)
+      setHistoryOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setHistoryError(`履歴の読み込みに失敗しました: ${message}`)
+    }
+  }
+
+  async function saveSnapshot(label: string) {
+    if (!result || !resultParams) return
+    setHistoryError('')
+    try {
+      await api.save_optimize_snapshot(result, resultParams, label)
+      setSavedResult(result)
+      await refreshSnapshots()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setHistoryError(`保存に失敗しました: ${message}`)
+      throw error
+    }
+  }
+
+  async function quickSaveSnapshot() {
+    setQuickSaving(true)
+    try {
+      await saveSnapshot('')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      window.alert(`最適化結果の保存に失敗しました: ${message}`)
+    } finally {
+      setQuickSaving(false)
+    }
+  }
+
+  async function deleteSnapshot(snapshotId: number) {
+    setHistoryError('')
+    try {
+      await api.delete_optimize_snapshot(snapshotId)
+      if (compareSnapshot?.id === snapshotId) {
+        setCompareSnapshot(null)
+      }
+      await refreshSnapshots()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setHistoryError(`削除に失敗しました: ${message}`)
+    }
+  }
 
   useEffect(() => {
     let disposed = false
@@ -116,6 +195,12 @@ export function OptimizeScreen({
       }
     }
     void loadSettings()
+    api
+      .list_optimize_snapshots()
+      .then((rows) => {
+        if (!disposed) setSnapshots(Array.isArray(rows) ? rows : [])
+      })
+      .catch(() => undefined)
     return () => { disposed = true }
   }, [bridgeReady])
 
@@ -154,12 +239,19 @@ export function OptimizeScreen({
   async function runOptimization() {
     setOptimizing(true)
     try {
+      const params: OptimizeSnapshotParams = {
+        daily_top_priority_cafe_taps: parseCountInput(dailyTopPriorityCafeTaps),
+        daily_other_cafe_taps: parseCountInput(dailyOtherCafeTaps),
+        daily_schedules: parseCountInput(dailySchedules),
+        include_semi_priority: includeSemiPriority,
+        use_leftover_ssr_for_top: useLeftoverSsrForTop,
+      }
       const next = await api.optimize(
-        parseCountInput(dailyTopPriorityCafeTaps),
-        parseCountInput(dailyOtherCafeTaps),
-        parseCountInput(dailySchedules),
-        includeSemiPriority,
-        useLeftoverSsrForTop,
+        params.daily_top_priority_cafe_taps,
+        params.daily_other_cafe_taps,
+        params.daily_schedules,
+        params.include_semi_priority,
+        params.use_leftover_ssr_for_top,
       )
       if (!next || typeof next !== 'object') {
         setResult(null)
@@ -172,6 +264,7 @@ export function OptimizeScreen({
       }
 
       setResult(next as OptimizeResult)
+      setResultParams(params)
     } finally {
       setOptimizing(false)
     }
@@ -339,6 +432,28 @@ export function OptimizeScreen({
               />
               余った紫を最優先に投入
             </label>
+            {result ? (
+              <button
+                className="btn"
+                disabled={quickSaving || currentSaved || optimizing}
+                title="この最適化結果を履歴に保存し、後日の進捗と比較できるようにします"
+                type="button"
+                onClick={() => void quickSaveSnapshot()}
+              >
+                {currentSaved ? '保存済み' : '結果を保存'}
+              </button>
+            ) : null}
+            <button
+              className="btn"
+              title="保存した最適化履歴の比較・削除"
+              type="button"
+              onClick={() => {
+                setHistoryError('')
+                setHistoryOpen(true)
+              }}
+            >
+              {snapshots.length ? `履歴 (${snapshots.length})` : '履歴'}
+            </button>
             <button
               className="btn btn-primary"
               disabled={loading || optimizing || prioritySavingStudentId !== null}
@@ -368,6 +483,33 @@ export function OptimizeScreen({
         }
         studentsById={studentsById}
       />
+
+      {historyOpen ? (
+        <OptimizeHistoryModal
+        canSave={result !== null && resultParams !== null}
+        currentSaved={currentSaved}
+        error={historyError}
+        snapshots={snapshots}
+        onClose={() => setHistoryOpen(false)}
+        onCompare={(snapshotId) => void openCompare(snapshotId)}
+        onDelete={deleteSnapshot}
+        onSave={saveSnapshot}
+        />
+      ) : null}
+
+      {compareSnapshot ? (
+        <OptimizeComparePanel
+          currentResult={result}
+          giftRefreshKey={refreshToken}
+          snapshot={compareSnapshot}
+          studentsById={studentsById}
+          onBack={() => {
+            setCompareSnapshot(null)
+            setHistoryOpen(true)
+          }}
+          onClose={() => setCompareSnapshot(null)}
+        />
+      ) : null}
     </div>
   )
 }

@@ -2,6 +2,9 @@ import type {
   Item,
   MasterStatus,
   OptimizeResult,
+  OptimizeSnapshot,
+  OptimizeSnapshotParams,
+  OptimizeSnapshotSummary,
   Plan,
   SearchResult,
   Student,
@@ -131,6 +134,15 @@ interface RawApi {
     use_leftover_ssr_for_top?: boolean,
   ): Promise<OptimizeResult>
 
+  list_optimize_snapshots(): Promise<OptimizeSnapshotSummary[]>
+  get_optimize_snapshot(snapshot_id: number): Promise<OptimizeSnapshot>
+  save_optimize_snapshot(
+    result: OptimizeResult,
+    params: OptimizeSnapshotParams,
+    label?: string,
+  ): Promise<{ ok: boolean; id: number }>
+  delete_optimize_snapshot(snapshot_id: number): Promise<{ ok: boolean }>
+
   get_ui_settings(): Promise<Record<string, string>>
   set_ui_setting(key: string, value: string): Promise<{ ok: boolean }>
 }
@@ -227,6 +239,21 @@ export const api: RawApi = {
   },
   delete_plan(plan_id) {
     return requestJson(`/api/plans/${plan_id}`, { method: 'DELETE' })
+  },
+  list_optimize_snapshots() {
+    return requestJson('/api/optimize-snapshots')
+  },
+  get_optimize_snapshot(snapshot_id) {
+    return requestJson(`/api/optimize-snapshots/${snapshot_id}`)
+  },
+  save_optimize_snapshot(result, params, label = '') {
+    return requestJson('/api/optimize-snapshots', {
+      method: 'POST',
+      body: JSON.stringify({ label, params, result }),
+    })
+  },
+  delete_optimize_snapshot(snapshot_id) {
+    return requestJson(`/api/optimize-snapshots/${snapshot_id}`, { method: 'DELETE' })
   },
   get_ui_settings() {
     return requestJson('/api/ui-settings')

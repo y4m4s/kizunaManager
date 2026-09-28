@@ -129,6 +129,26 @@ export interface OptimizeResult {
   error?: string
 }
 
+export interface OptimizeSnapshotParams {
+  daily_top_priority_cafe_taps: number
+  daily_other_cafe_taps: number
+  daily_schedules: number
+  include_semi_priority: boolean
+  use_leftover_ssr_for_top: boolean
+}
+
+export interface OptimizeSnapshotSummary {
+  id: number
+  created_at: string
+  label: string
+  student_count: number
+  params: OptimizeSnapshotParams
+}
+
+export interface OptimizeSnapshot extends OptimizeSnapshotSummary {
+  result: OptimizeResult
+}
+
 export interface TaskSnapshot {
   id: string
   kind: string
