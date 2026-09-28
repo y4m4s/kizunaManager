@@ -1,7 +1,9 @@
-﻿import type { Item } from '../../types'
+﻿import type { ReactNode } from 'react'
+import type { Item } from '../../types'
 import { IconThumb } from '../common/IconThumb'
 
 type GiftPickerProps = {
+  actions?: ReactNode
   items: Item[]
   selectedIds: number[]
   onToggle: (itemId: number) => void
@@ -18,7 +20,7 @@ function giftTileTone(item: Item): string {
   return item.rarity === 'SSR' ? 'rarity-ssr' : 'rarity-sr'
 }
 
-export function GiftPicker({ items, selectedIds, onToggle }: GiftPickerProps) {
+export function GiftPicker({ actions, items, selectedIds, onToggle }: GiftPickerProps) {
   return (
     <section className="card-shell search-section">
       <div className="section-head">
@@ -26,6 +28,7 @@ export function GiftPicker({ items, selectedIds, onToggle }: GiftPickerProps) {
           <h3>贈り物を選択</h3>
           <p>複数選択して、その贈り物を好む生徒を一覧で確認できます。</p>
         </div>
+        {actions ? <div className="toolbar-actions gift-picker-actions">{actions}</div> : null}
       </div>
 
       <div className="gift-grid">

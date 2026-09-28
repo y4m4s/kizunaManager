@@ -3,6 +3,7 @@ import { api } from '../api'
 import { SEARCH_TABS } from '../constants'
 import type { Item, SearchResult, Student } from '../types'
 import { GiftPicker } from '../components/search/GiftPicker'
+import { GiftSearchResults } from '../components/search/GiftSearchResults'
 import { SearchResultsTable } from '../components/search/SearchResultsTable'
 import { StudentPicker } from '../components/search/StudentPicker'
 import type { ToastKind } from '../components/common/Toast'
@@ -46,8 +47,7 @@ export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScree
   const [selectedGiftIds, setSelectedGiftIds] = useState<number[]>([])
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([])
   const [studentQuery, setStudentQuery] = useState('')
-  const [hideMedium, setHideMedium] = useState(false)
-  const [hiddenResultIds, setHiddenResultIds] = useState<number[]>([])
+  const [searchedGiftIds, setSearchedGiftIds] = useState<number[]>([])
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(true)
   const resultsExportRef = useRef<HTMLDivElement>(null)
@@ -95,14 +95,9 @@ export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScree
     )
     .slice(0, 40)
 
-  const visibleResults = results
-    .filter((row) => !hiddenResultIds.includes(row.student_id))
-    .filter((row) => {
-      if (activeTab !== 'gift' || !hideMedium) {
-        return true
-      }
-      return row.effects.extra_large.length > 0 || row.effects.large.length > 0
-    })
+  const searchedGifts = searchedGiftIds
+    .map((giftId) => items.find((item) => item.id === giftId))
+    .filter((item): item is Item => Boolean(item))
 
   useEffect(() => {
     if (!bridgeReady || activeTab !== 'student' || !selectedStudentIds.length) {
@@ -127,24 +122,22 @@ export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScree
   }, [activeTab, bridgeReady, refreshToken, selectedStudentIds])
 
   async function runSearch() {
-    setHideMedium(false)
-    setHiddenResultIds([])
-
     if (activeTab === 'gift') {
       if (!selectedGiftIds.length) {
         window.alert('贈り物を1つ以上選択してください。')
         return
       }
-      const next = await api.run_gift_search(selectedGiftIds)
+      const giftIds = [...selectedGiftIds]
+      const next = await api.run_gift_search(giftIds)
       setResults(Array.isArray(next) ? next : [])
+      setSearchedGiftIds(giftIds)
       return
     }
   }
 
   function switchTab(tab: 'gift' | 'student') {
     setActiveTab(tab)
-    setHideMedium(false)
-    setHiddenResultIds([])
+    setSearchedGiftIds([])
     setResults([])
   }
 
@@ -216,8 +209,7 @@ export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScree
       setSelectedStudentIds([])
       setStudentQuery('')
     }
-    setHideMedium(false)
-    setHiddenResultIds([])
+    setSearchedGiftIds([])
     setResults([])
   }
 
@@ -247,6 +239,16 @@ export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScree
 
       {activeTab === 'gift' ? (
         <GiftPicker
+          actions={
+            <>
+              <button className="btn btn-primary" disabled={loading} type="button" onClick={() => void runSearch()}>
+                {loading ? '読み込み中...' : 'この条件で検索する'}
+              </button>
+              <button className="btn" type="button" onClick={clearSelection}>
+                クリア
+              </button>
+            </>
+          }
           items={items}
           selectedIds={selectedGiftIds}
           onToggle={(itemId) =>
@@ -272,44 +274,16 @@ export function SearchScreen({ bridgeReady, onToast, refreshToken }: SearchScree
       )}
 
       {activeTab === 'gift' ? (
-        <section className="card-shell">
-          <div className="toolbar-row">
-            <div className="toolbar-actions">
-              <button className="btn btn-primary" disabled={loading} type="button" onClick={() => void runSearch()}>
-                {loading ? '読み込み中...' : 'この条件で検索する'}
-              </button>
-              <button className="btn" type="button" onClick={clearSelection}>
-                クリア
-              </button>
-            </div>
-
-            <div className="toolbar-actions">
-              {results.length ? (
-                <button className="btn" type="button" onClick={() => setHideMedium((current) => !current)}>
-                  {hideMedium ? '中を表示する' : '中を非表示にする'}
-                </button>
-              ) : null}
-              {hiddenResultIds.length ? (
-                <button className="btn" type="button" onClick={() => setHiddenResultIds([])}>
-                  非表示を解除
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      <div ref={resultsExportRef}>
-        <SearchResultsTable
+        <GiftSearchResults
+          gifts={searchedGifts}
           giftRefreshKey={refreshToken}
-          hideMedium={hideMedium}
-          mode={activeTab}
-          rows={visibleResults}
-          onHideRow={(studentId) =>
-            setHiddenResultIds((current) => [...current, studentId])
-          }
+          rows={results}
         />
-      </div>
+      ) : (
+        <div ref={resultsExportRef}>
+          <SearchResultsTable giftRefreshKey={refreshToken} rows={results} />
+        </div>
+      )}
     </div>
   )
 }

@@ -12,15 +12,12 @@ const EFFECT_COLUMN_MAX_WIDTH = 280
 // 生徒欄の中央寄せ用: アイコン(40) + 間隔(10) + 表示中で最長の名前 を1つの枠として中央に置く。
 // 枠内は左揃えなので、名前の長さが違ってもアイコンの位置は全行で揃う
 const STUDENT_ICON_BLOCK_WIDTH = 50
-// 枠の左右に確保する余白 (右側は非表示ボタンの置き場を兼ねる)
+// 枠の左右に確保する余白
 const STUDENT_SIDE_GUTTER = 40
 
 type SearchResultsTableProps = {
   giftRefreshKey?: number | string
-  hideMedium: boolean
-  mode: 'gift' | 'student'
   rows: SearchResult[]
-  onHideRow: (studentId: number) => void
 }
 
 function GiftCell({ items }: { items: SlimItem[] }) {
@@ -45,15 +42,10 @@ function GiftCell({ items }: { items: SlimItem[] }) {
 
 export function SearchResultsTable({
   giftRefreshKey,
-  hideMedium,
-  mode,
   rows,
-  onHideRow,
 }: SearchResultsTableProps) {
   const shellRef = useRef<HTMLElement | null>(null)
-  const visibleColumns = SEARCH_EFFECT_COLUMNS.filter(
-    (column) => !(hideMedium && column.key === 'medium'),
-  )
+  const visibleColumns = SEARCH_EFFECT_COLUMNS
   const layoutStyle = {
     '--search-columns': `var(--search-student-col, ${STUDENT_COLUMN_MIN_WIDTH}px) repeat(${visibleColumns.length}, minmax(180px, 1fr))`,
     '--search-max-width': `calc(var(--search-student-col, ${STUDENT_COLUMN_MIN_WIDTH}px) + ${EFFECT_COLUMN_MAX_WIDTH * visibleColumns.length}px)`,
@@ -85,7 +77,7 @@ export function SearchResultsTable({
     return () => {
       disposed = true
     }
-  }, [rows, hideMedium])
+  }, [rows])
 
   if (!rows.length) {
     return (
@@ -128,16 +120,6 @@ export function SearchResultsTable({
                   studentName={row.student_name}
                 />
               </div>
-              {mode === 'gift' ? (
-                <button
-                  aria-label={`${row.student_name}を非表示`}
-                  className="ghost-icon-button result-hide-button"
-                  type="button"
-                  onClick={() => onHideRow(row.student_id)}
-                >
-                  ×
-                </button>
-              ) : null}
             </div>
 
             {visibleColumns.map((column) => (

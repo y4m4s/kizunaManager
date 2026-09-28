@@ -794,17 +794,6 @@
   max-width: none;
 }
 
-.result-hide-button {
-  align-items: center;
-  display: inline-flex;
-  grid-column: 3;
-  height: 32px;
-  justify-content: center;
-  justify-self: end;
-  margin-right: 2px;
-  width: 24px;
-}
-
 .result-effect-cell {
   align-items: center;
   display: flex;
@@ -2755,10 +2744,6 @@
     grid-column: 1;
   }
 
-  .result-hide-button {
-    grid-column: 2;
-  }
-
   .results-body .result-row .result-student-cell {
     border-bottom: 1px solid #e5eef8;
   }
@@ -3444,4 +3429,160 @@
     grid-column: 1 / -1;
   }
 
+}
+
+/* Gift search results (per gift: rows = gift / 特大 / 大 / 中, right = students) */
+
+.gift-results-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-inline: auto;
+  max-width: 1100px;
+  width: 100%;
+}
+
+.gift-result-table {
+  overflow: hidden;
+  padding: 0;
+}
+
+.gift-result-row {
+  border-top: 1px solid #dde8f4;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+}
+
+.gift-result-row-head {
+  background: #f6f9fd;
+  border-top: none;
+}
+
+.gift-result-label {
+  align-items: center;
+  border-right: 1px solid #dde8f4;
+  color: #284664;
+  display: flex;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  padding: 10px 12px;
+}
+
+/* 特大/大/中: 最長のラベル(特大=2文字)に合わせた固定幅の枠を中央に置き、枠内は左揃えにしてアイコン位置を揃える */
+.gift-result-effect-inner {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  justify-content: flex-start;
+  white-space: nowrap;
+  width: calc(22px + 8px + 2em);
+}
+
+.gift-result-gift {
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+}
+
+.gift-result-gift-icon {
+  align-items: center;
+  background: #fff8dd;
+  border-radius: 14px;
+  display: inline-flex;
+  justify-content: center;
+  padding: 6px;
+}
+
+.gift-result-gift-icon.rarity-ssr {
+  background: #f5eaff;
+}
+
+.gift-result-gift-name {
+  color: #1e3a5f;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.gift-result-students-head {
+  align-items: center;
+  color: #284664;
+  display: flex;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  padding: 10px 12px;
+}
+
+.gift-result-students-head small {
+  color: #7890a8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gift-result-students {
+  align-content: center;
+  align-items: start;
+  display: grid;
+  gap: 6px 4px;
+  /* 列幅を揃えたまま、並び全体を左右中央に置く (最終段も列の位置は揃う) */
+  grid-template-columns: repeat(auto-fit, var(--gift-student-tile-width, 84px));
+  justify-content: center;
+  min-height: 84px;
+  padding: 10px 12px;
+}
+
+.gift-result-none {
+  align-self: center;
+  color: #a3b3c5;
+  font-size: 13px;
+  grid-column: 1 / -1;
+  text-align: center;
+}
+
+/* 共通ホバーカードのトリガーを「アイコン + 下に小さな名前」のタイル表示にする */
+.gift-result-student {
+  display: flex;
+  justify-content: center;
+  width: var(--gift-student-tile-width, 84px);
+}
+
+.gift-result-student .student-gift-hover {
+  max-width: 100%;
+}
+
+.gift-result-student .student-gift-hover-trigger {
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  max-width: 100%;
+  min-height: 0;
+  padding: 6px 4px;
+  width: var(--gift-student-tile-width, 84px);
+}
+
+.gift-result-student .student-gift-hover-name {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: visible;
+  text-align: center;
+  /* 名前は改行・省略しない (タイル幅を最長の名前に合わせて広げる) */
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+@media (max-width: 840px) {
+  .gift-result-row {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .gift-result-gift-name {
+    font-size: 11px;
+  }
+}
+
+.gift-picker-actions {
+  flex-shrink: 0;
+  justify-content: flex-end;
 }
