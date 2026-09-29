@@ -407,6 +407,52 @@ test('reallocates stock released by overshoot repair to semi priority', () => {
   assert.deepEqual(result.leftovers, [])
 })
 
+test('reserves equally effective gifts for semi priority without reducing primary fulfillment', () => {
+  for (const primaryPriority of ['top_priority', 'priority']) {
+    for (const names of [['A shared', 'Z exclusive'], ['Z shared', 'A exclusive']]) {
+      const result = optimizeAllocation(
+        [plan(1, 1, 40, primaryPriority), plan(2, 2, 40, 'semi_priority')],
+        { 101: 1, 102: 1 },
+        { 1: student(1, ['a', 'b']), 2: student(2, ['a']) },
+        { 101: item(101, names[0], 'SR', ['a']), 102: item(102, names[1], 'SR', ['b']) },
+      )
+      assert.ok(result.results.every((row) => row.remaining_exp === 0))
+      assert.equal(result.results.find((row) => row.student_id === 2)?.allocated_items[0].item_id, 101)
+      assert.deepEqual(result.leftovers, [])
+    }
+  }
+})
+
+test('reallocates usable stock released by equivalent class rebalancing', () => {
+  const result = optimizeAllocation(
+    [plan(1, 1, 80, 'top_priority'), plan(2, 2, 40, 'top_priority'), plan(3, 3, 80, 'semi_priority')],
+    { 101: 2, 102: 1, 104: 2 },
+    { 1: student(1, ['a', 'b']), 2: student(2, ['a']), 3: student(3, ['b']) },
+    { 101: item(101, '101', 'SR', ['a']), 102: item(102, '102', 'SR', ['b']), 104: item(104, '104', 'SR', ['a']) },
+  )
+  assert.ok(result.results.filter((row) => row.priority === 'top_priority').every((row) => row.remaining_exp === 0))
+  const semi = result.results.find((row) => row.student_id === 3)!
+  assert.equal(semi.allocated_exp, 40)
+  assert.equal(semi.remaining_exp, 40)
+  assert.equal(semi.allocated_items[0].item_id, 102)
+  assert.equal(result.leftovers.some((row) => row.item_id === 102), false)
+})
+
+test('keeps contested gifts for primary students and excludes disabled semi priority', () => {
+  for (const includeSemi of [true, false]) {
+    const result = optimizeAllocation(
+      [plan(1, 1, 40, 'top_priority'), plan(2, 2, 40, 'semi_priority')],
+      { 101: 1, 102: 1 },
+      { 1: student(1, ['a']), 2: student(2, ['a', 'b']) },
+      { 101: item(101, 'Shared', 'SR', ['a']), 102: item(102, 'Semi only', 'SR', ['b']) },
+      0, 0, 0, includeSemi,
+    )
+    assert.equal(result.results.find((row) => row.student_id === 1)?.allocated_exp, 40)
+    assert.equal(result.results.find((row) => row.student_id === 2)?.allocated_exp, includeSemi ? 40 : 0)
+    assert.equal(result.leftovers.reduce((sum, row) => sum + row.quantity, 0), includeSemi ? 0 : 1)
+  }
+})
+
 test('calculates birthday days even with zero daily EXP', () => {
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)

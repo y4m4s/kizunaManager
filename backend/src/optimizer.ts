@@ -1159,13 +1159,14 @@ function allocateStateGroup(
   stock: Record<number, number>,
   itemsById: Record<number, ItemRecord>,
   evaluations: EvaluationCache,
+  compatibilityStates = states,
 ): void {
   if (!states.length) {
     return
   }
 
   while (true) {
-    const compatibilityStats = buildCompatibilityStats(states, stock, evaluations, itemsById)
+    const compatibilityStats = buildCompatibilityStats(compatibilityStates, stock, evaluations, itemsById)
     const candidate = pickNextGlobalCandidate(
       states,
       stock,
@@ -1483,19 +1484,32 @@ export function optimizeAllocation(
   const semiPriorityStates = states.filter(
     (state) => String(state.priority || 'priority') === 'semi_priority',
   )
+  const activeStates = includeSemiPriority
+    ? [...primaryStates, ...semiPriorityStates]
+    : primaryStates
 
-  // Repairs only reduce overshoot; another pass makes released stock available
-  // to students whose goals are still unmet, in the same priority order.
-  do {
-    allocateStateGroup(primaryStates, stock, itemsById, evaluations)
-    if (includeSemiPriority) {
-      allocateStateGroup(semiPriorityStates, stock, itemsById, evaluations)
+  while (true) {
+    // Keep recipients in priority phases, but account for semi-priority demand
+    // when choosing which gifts to spend on the primary group.
+    do {
+      allocateStateGroup(primaryStates, stock, itemsById, evaluations, activeStates)
+      if (includeSemiPriority) {
+        allocateStateGroup(semiPriorityStates, stock, itemsById, evaluations)
+      }
+    } while (repairAllocationOvershoot(activeStates, stock, itemsById, evaluations))
+    if (useLeftoverSsrForTop) {
+      allocateLeftoverSsrToTopPriority(primaryStates, stock, studentsById, itemsById)
     }
-  } while (repairAllocationOvershoot(states, stock, itemsById, evaluations))
-  if (useLeftoverSsrForTop) {
-    allocateLeftoverSsrToTopPriority(states, stock, studentsById, itemsById)
+    rebalanceEquivalentAllocationClasses(activeStates, stock, itemsById, evaluations)
+
+    // Rebalancing preserves each student's EXP but can release a gift usable by
+    // an unmet plan. Each extra pass must allocate one, reducing remaining EXP;
+    // repairs and equivalent swaps never increase it, so the loop terminates.
+    const compatibilityStats = buildCompatibilityStats(activeStates, stock, evaluations, itemsById)
+    if (!pickNextGlobalCandidate(activeStates, stock, itemsById, evaluations, compatibilityStats)) {
+      break
+    }
   }
-  rebalanceEquivalentAllocationClasses(states, stock, itemsById, evaluations)
   let totalRequired = 0
   let totalAllocated = 0
   let totalPassive = 0

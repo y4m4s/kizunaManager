@@ -25,6 +25,12 @@ const SELECTABLE_BOX_EXP = 60
 // backend の GIFT_EXP_VALUES.SSR.medium と同じ値
 const SSR_MEDIUM_EXP = 120
 const MAX_BOND_LEVEL = 100
+const GIFT_EFFECT_DISPLAY_RANK: Record<string, number> = {
+  extra_large: 0,
+  large: 1,
+  medium: 2,
+  small: 3,
+}
 
 function isBouquetDisplayItem(
   item: { item_name?: string; gift_kind?: string },
@@ -90,7 +96,7 @@ function giftDisplayRank(
   return 2
 }
 
-function sortGiftDisplayItems<T extends { item_id: number; item_name: string; gift_kind?: string; rarity?: string }>(
+function sortGiftDisplayItems<T extends { item_id: number; item_name: string; gift_kind?: string; rarity?: string; effect?: string }>(
   items: T[],
   fallbackItemsById: Record<number, Item>,
 ): T[] {
@@ -100,6 +106,11 @@ function sortGiftDisplayItems<T extends { item_id: number; item_name: string; gi
     const rankDiff = giftDisplayRank(left, leftFallback) - giftDisplayRank(right, rightFallback)
     if (rankDiff !== 0) {
       return rankDiff
+    }
+    const effectDiff = (GIFT_EFFECT_DISPLAY_RANK[left.effect ?? ''] ?? 4) -
+      (GIFT_EFFECT_DISPLAY_RANK[right.effect ?? ''] ?? 4)
+    if (effectDiff !== 0) {
+      return effectDiff
     }
     return left.item_name.localeCompare(right.item_name, 'ja')
   })
