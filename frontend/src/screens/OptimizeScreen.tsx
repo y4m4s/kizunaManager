@@ -403,9 +403,10 @@ export function OptimizeScreen({
 
         <div className="optimize-passive-formula" aria-label="自然獲得EXPの計算条件">
           <strong>計算条件</strong>
-          <span>{`カフェ +${CAFE_TAP_EXP} EXP/回`}</span>
-          <span>{`スケジュール +${formatExpPreview(SCHEDULE_EXPECTED_EXP)} EXP/回`}</span>
-          <span>Rank 12・ボーナス期待値込み</span>
+          <ul>
+            <li>{`カフェ + ${CAFE_TAP_EXP} EXP / 回`}</li>
+            <li>{`スケジュール + ${formatExpPreview(SCHEDULE_EXPECTED_EXP)} EXP / 回 ( Rank 12 ボーナス期待値込み )`}</li>
+          </ul>
         </div>
       </section>
 
