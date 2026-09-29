@@ -9,6 +9,12 @@ type GiftManagementScreenProps = {
 }
 
 const SELECTABLE_BOX_KEY = 'orange_L'
+const ADVANCED_TAYLOR_STONE_KEY = 'advanced_taylor_stone'
+type ResourceKey = 'box' | 'stone'
+const RESOURCE_NAMES: Record<ResourceKey, string> = {
+  box: '選択式ボックス',
+  stone: '上級テイラーストーン',
+}
 
 function isBouquetItem(item: Pick<Item, 'gift_kind' | 'name'>): boolean {
   return item.gift_kind === 'bouquet' || item.name.includes('\u82b1\u675f')
@@ -37,18 +43,18 @@ function sortInventoryItems(items: Item[]): Item[] {
 export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManagementScreenProps) {
   const [items, setItems] = useState<Item[]>([])
   const [itemInputs, setItemInputs] = useState<Record<number, string>>({})
-  const [boxQuantity, setBoxQuantity] = useState('0')
+  const [resourceInputs, setResourceInputs] = useState({ box: '0', stone: '0' })
 
   const itemsRef = useRef<Item[]>([])
   const itemInputsRef = useRef<Record<number, string>>({})
-  const boxQuantityRef = useRef('0')
-  const savedBoxQuantityRef = useRef(0)
+  const resourceInputsRef = useRef({ box: '0', stone: '0' })
+  const savedResourceQuantitiesRef = useRef({ box: 0, stone: 0 })
   const itemSaveQueueRef = useRef<Record<number, Promise<void>>>({})
-  const boxSaveQueueRef = useRef<Promise<void> | null>(null)
+  const resourceSaveQueuesRef = useRef<Partial<Record<ResourceKey, Promise<void>>>>({})
 
-  function setBoxState(value: string) {
-    boxQuantityRef.current = value
-    setBoxQuantity(value)
+  function setResourceState(key: ResourceKey, value: string) {
+    resourceInputsRef.current = { ...resourceInputsRef.current, [key]: value }
+    setResourceInputs(resourceInputsRef.current)
   }
 
   function replaceItems(nextItems: Item[]) {
@@ -85,10 +91,11 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
         return
       }
 
-      const [itemRows, inventoryRows, boxRows] = await Promise.all([
+      const [itemRows, inventoryRows, boxRows, materialRows] = await Promise.all([
         api.list_items(),
         api.get_inventory(),
         api.list_boxes(),
+        api.list_crafting_materials(),
       ])
       if (disposed) {
         return
@@ -106,11 +113,13 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
       ) as Record<number, string>
       const nextBoxes = boxRows && typeof boxRows === 'object' ? boxRows : {}
       const nextBoxQuantity = String(Number(nextBoxes[SELECTABLE_BOX_KEY] ?? 0))
+      const nextStoneQuantity = String(Number(materialRows[ADVANCED_TAYLOR_STONE_KEY] ?? 0))
 
       replaceItems(nextItems)
       replaceItemInputs(nextInputs)
-      setBoxState(nextBoxQuantity)
-      savedBoxQuantityRef.current = Number(nextBoxQuantity)
+      setResourceState('box', nextBoxQuantity)
+      setResourceState('stone', nextStoneQuantity)
+      savedResourceQuantitiesRef.current = { box: Number(nextBoxQuantity), stone: Number(nextStoneQuantity) }
     }
 
     void load()
@@ -156,34 +165,39 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
     })
   }
 
-  function queueBoxSave() {
-    const quantity = Number.parseInt(boxQuantityRef.current || '0', 10)
-    if (Number.isNaN(quantity) || quantity < 0) {
-      window.alert('選択式ボックス在庫は0以上の整数で入力してください。')
-      setBoxState(String(savedBoxQuantityRef.current))
+  function queueResourceSave(key: ResourceKey) {
+    const raw = resourceInputsRef.current[key].trim() || '0'
+    const quantity = Number(raw)
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(quantity)) {
+      window.alert(`${RESOURCE_NAMES[key]}在庫は0以上の整数で入力してください。`)
+      setResourceState(key, String(savedResourceQuantitiesRef.current[key]))
       return
     }
 
     const normalized = String(quantity)
-    setBoxState(normalized)
+    setResourceState(key, normalized)
 
-    const previous = boxSaveQueueRef.current ?? Promise.resolve()
+    const previous = resourceSaveQueuesRef.current[key] ?? Promise.resolve()
     const queued = previous
       .catch(() => undefined)
       .then(async () => {
         try {
-          await api.set_box_quantity(SELECTABLE_BOX_KEY, quantity)
-          savedBoxQuantityRef.current = quantity
+          if (key === 'box') {
+            await api.set_box_quantity(SELECTABLE_BOX_KEY, quantity)
+          } else {
+            await api.set_crafting_material_quantity(ADVANCED_TAYLOR_STONE_KEY, quantity)
+          }
+          savedResourceQuantitiesRef.current[key] = quantity
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           window.alert(`保存に失敗しました: ${message}`)
         }
       })
 
-    boxSaveQueueRef.current = queued
+    resourceSaveQueuesRef.current[key] = queued
     void queued.finally(() => {
-      if (boxSaveQueueRef.current === queued) {
-        boxSaveQueueRef.current = null
+      if (resourceSaveQueuesRef.current[key] === queued) {
+        delete resourceSaveQueuesRef.current[key]
       }
     })
   }
@@ -191,14 +205,17 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
   return (
     <div className="screen-stack gift-management-screen">
       <InventoryEditor
-        boxQuantity={boxQuantity}
+        boxQuantity={resourceInputs.box}
+        stoneQuantity={resourceInputs.stone}
         items={items}
         quantityInputs={itemInputs}
-        onBoxQuantityChange={setBoxState}
+        onBoxQuantityChange={(value) => setResourceState('box', value)}
+        onStoneQuantityChange={(value) => setResourceState('stone', value)}
         onItemQuantityChange={(itemId, value) =>
           updateItemInputs((current) => ({ ...current, [itemId]: value }))
         }
-        onSaveBoxQuantity={queueBoxSave}
+        onSaveBoxQuantity={() => queueResourceSave('box')}
+        onSaveStoneQuantity={() => queueResourceSave('stone')}
         onSaveItemQuantity={queueItemSave}
       />
     </div>

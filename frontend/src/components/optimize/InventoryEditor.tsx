@@ -1,31 +1,34 @@
 import type { Item } from '../../types'
-import { InventoryBoxTile } from './InventoryBoxTile'
+import advancedTaylorStoneIconUrl from '../../../../data/images/items/item_icon_shiftingcraftitem_2.webp'
+import { SELECTABLE_BOX_ICON_URL } from '../../lib/uiAssets'
+import { InventoryResourceTile } from './InventoryResourceTile'
 import { InventoryItemRow } from './InventoryItemRow'
-
-const INVENTORY_GRID_COLUMNS = 11
 
 type InventoryEditorProps = {
   boxQuantity: string
+  stoneQuantity: string
   items: Item[]
   quantityInputs: Record<number, string>
   onBoxQuantityChange: (value: string) => void
+  onStoneQuantityChange: (value: string) => void
   onItemQuantityChange: (itemId: number, value: string) => void
   onSaveBoxQuantity: () => void
+  onSaveStoneQuantity: () => void
   onSaveItemQuantity: (itemId: number) => void
 }
 
 export function InventoryEditor({
   boxQuantity,
+  stoneQuantity,
   items,
   quantityInputs,
   onBoxQuantityChange,
+  onStoneQuantityChange,
   onItemQuantityChange,
   onSaveBoxQuantity,
+  onSaveStoneQuantity,
   onSaveItemQuantity,
 }: InventoryEditorProps) {
-  const remainder = items.length % INVENTORY_GRID_COLUMNS
-  const boxTileSpan = remainder === 0 ? INVENTORY_GRID_COLUMNS : INVENTORY_GRID_COLUMNS - remainder
-
   return (
     <section className="card-shell search-section">
       <div className="section-head">
@@ -46,11 +49,23 @@ export function InventoryEditor({
           />
         ))}
 
-        <InventoryBoxTile
+        <InventoryResourceTile
+          name="選択式ボックス"
+          description="橙大として計算"
+          iconUrl={SELECTABLE_BOX_ICON_URL}
           quantity={boxQuantity}
-          span={boxTileSpan}
+          span={2}
           onChange={onBoxQuantityChange}
           onCommit={onSaveBoxQuantity}
+        />
+        <InventoryResourceTile
+          name="上級テイラーストーン"
+          description="1個＋橙2個でボックス1個"
+          iconUrl={advancedTaylorStoneIconUrl}
+          quantity={stoneQuantity}
+          span={2}
+          onChange={onStoneQuantityChange}
+          onCommit={onSaveStoneQuantity}
         />
       </div>
     </section>

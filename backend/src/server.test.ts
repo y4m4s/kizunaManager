@@ -18,7 +18,7 @@ for (const environment of ['production', 'development']) {
     const db = new Database(dbPath)
     assert.equal(db.dbPath, dbPath)
     db.initialize()
-    db.replaceMasterData([{ id: 1, name: 'Test' }], [{ id: 101, name: 'Gift' }], 'test')
+    db.replaceMasterData([{ id: 1, name: 'Test' }], [{ id: 101, name: 'Gift', rarity: 'SR', gift_kind: 'gift' }], 'test')
     db.close()
     fs.mkdirSync(path.join(directory, 'images/items'), { recursive: true })
     fs.writeFileSync(path.join(directory, 'images/items/test.png'), 'test image')
@@ -59,6 +59,21 @@ for (const environment of ['production', 'development']) {
     const write = await fetch(`${origin}/api/inventory/101`, { method: 'PUT', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: '{"quantity":7}' })
     assert.equal(write.status, 200)
     assert.deepEqual(await (await fetch(`${origin}/api/inventory`)).json(), { 101: 7 })
+    const materialUrl = `${origin}/api/crafting-materials/advanced_taylor_stone`
+    const materialHeaders = { Origin: origin, 'Content-Type': 'application/json' }
+    assert.deepEqual(await (await fetch(`${origin}/api/crafting-materials`)).json(), {})
+    for (const quantity of [-1, 1.5, null, '3', Number.MAX_SAFE_INTEGER + 1]) {
+      assert.equal((await fetch(materialUrl, { method: 'PUT', headers: materialHeaders, body: JSON.stringify({ quantity }) })).status, 400)
+    }
+    const optimize = async () => (await fetch(`${origin}/api/optimize`, { method: 'POST', headers: materialHeaders, body: '{}' })).json()
+    assert.equal((await optimize()).craftable_boxes.box_count, 0)
+    for (const [quantity, expected] of [[2, 2], [5, 3], [0, 0], [2, 2]]) {
+      assert.equal((await fetch(materialUrl, { method: 'PUT', headers: materialHeaders, body: JSON.stringify({ quantity }) })).status, 200)
+      assert.deepEqual(await (await fetch(`${origin}/api/crafting-materials`)).json(), { advanced_taylor_stone: quantity })
+      assert.deepEqual((await optimize()).craftable_boxes, {
+        box_count: expected, source_item_count: 7, taylor_stone_count: quantity,
+      })
+    }
     const dev = await fetch(`${origin}/api/health`, { headers: { Origin: 'http://127.0.0.1:5173' } })
     assert.equal(dev.status, environment === 'development' ? 200 : 403)
     if (environment === 'development') assert.equal(dev.headers.get('access-control-allow-origin'), 'http://127.0.0.1:5173')
@@ -89,6 +104,7 @@ for (const environment of ['production', 'development']) {
     const saved = new DatabaseSync(dbPath, { readOnly: true })
     try {
       assert.equal(saved.prepare('SELECT quantity FROM user_inventory WHERE item_id=101').get()?.quantity, 7)
+      assert.equal(saved.prepare("SELECT quantity FROM user_crafting_materials WHERE material_key='advanced_taylor_stone'").get()?.quantity, 2)
       assert.equal(saved.prepare('PRAGMA integrity_check').get()?.integrity_check, 'ok')
     } finally { saved.close() }
   })

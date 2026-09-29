@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 
 import {
+  ADVANCED_TAYLOR_STONE_KEY,
   DB_PATH,
   HIDDEN_ITEM_ICON_NAMES,
   HIDDEN_ITEM_NAMES,
@@ -274,6 +275,12 @@ export class Database {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         box_type TEXT NOT NULL UNIQUE,
         quantity INTEGER DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS user_crafting_materials (
+        material_key TEXT PRIMARY KEY,
+        quantity INTEGER NOT NULL DEFAULT 0,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -621,6 +628,26 @@ export class Database {
     )
   }
 
+  listCraftingMaterials(): Record<string, number> {
+    const rows = this.all<{ material_key: string; quantity: number }>(
+      'SELECT material_key, quantity FROM user_crafting_materials',
+    )
+    return Object.fromEntries(rows.map((row) => [row.material_key, Number(row.quantity)]))
+  }
+
+  setCraftingMaterialQuantity(materialKey: string, quantity: number): void {
+    if (!Number.isSafeInteger(quantity) || quantity < 0) {
+      throw new Error('製造素材の数量は0以上の整数で入力してください。')
+    }
+    this.run(
+      `INSERT INTO user_crafting_materials(material_key, quantity, updated_at)
+       VALUES(?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(material_key) DO UPDATE SET
+         quantity = excluded.quantity, updated_at = CURRENT_TIMESTAMP`,
+      [materialKey, quantity],
+    )
+  }
+
   listPlans(): PlanRecord[] {
     const rows = this.all(
       `
@@ -791,6 +818,7 @@ export class Database {
     Record<number, number>,
     Record<number, StudentRecord>,
     Record<number, ItemRecord>,
+    number,
   ] {
     const plans = this.listPlans().filter((plan) =>
       ['top_priority', 'priority', 'semi_priority'].includes(String(plan.priority)),
@@ -822,7 +850,8 @@ export class Database {
         quantity: selectableBoxQuantity,
       }
     }
-    return [plans, inventory, students, items]
+    const taylorStoneCount = this.listCraftingMaterials()[ADVANCED_TAYLOR_STONE_KEY] ?? 0
+    return [plans, inventory, students, items, taylorStoneCount]
   }
 
 }

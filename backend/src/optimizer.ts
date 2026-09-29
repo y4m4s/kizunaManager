@@ -1397,9 +1397,10 @@ function isCraftSafeMaterial(
   return true
 }
 
-function craftableSelectableBoxCount(
+function calculateCraftableBoxes(
   leftoverRows: OptimizeResultRecord['leftovers'],
-): [number, number] {
+  taylorStoneCount: number,
+): OptimizeResultRecord['craftable_boxes'] {
   let orangeItemTotal = 0
   for (const item of leftoverRows) {
     if (item.item_id === SELECTABLE_BOX_ITEM_ID || item.gift_kind === 'bouquet') {
@@ -1413,7 +1414,13 @@ function craftableSelectableBoxCount(
     }
     orangeItemTotal += Math.max(0, Number(item.quantity || 0))
   }
-  return [Math.floor(orangeItemTotal / 2), orangeItemTotal]
+  const stoneCount = Number.isSafeInteger(taylorStoneCount) ? Math.max(0, taylorStoneCount) : 0
+  const boxCount = Math.min(Math.floor(orangeItemTotal / 2), stoneCount)
+  return {
+    box_count: boxCount,
+    source_item_count: orangeItemTotal,
+    taylor_stone_count: stoneCount,
+  }
 }
 
 function leftoverSortKey(itemId: number, item: Partial<ItemRecord>): [number, string] {
@@ -1440,6 +1447,7 @@ export function optimizeAllocation(
   dailySchedules = 0,
   includeSemiPriority = true,
   useLeftoverSsrForTop = false,
+  taylorStoneCount = 0,
 ): OptimizeResultRecord {
   const stock = Object.fromEntries(
     Object.entries(inventory)
@@ -1559,7 +1567,7 @@ export function optimizeAllocation(
       }
     })
 
-  const [boxCount, sourceItemCount] = craftableSelectableBoxCount(leftovers)
+  const craftableBoxes = calculateCraftableBoxes(leftovers, taylorStoneCount)
 
   return {
     results,
@@ -1573,10 +1581,7 @@ export function optimizeAllocation(
           : Math.min(1, totalUseful / totalRequired),
     },
     leftovers,
-    craftable_boxes: {
-      box_count: boxCount,
-      source_item_count: sourceItemCount,
-    },
+    craftable_boxes: craftableBoxes,
   }
 }
 

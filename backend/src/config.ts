@@ -40,6 +40,7 @@ export const SELECTABLE_BOX_KEY = 'orange_L'
 export const SELECTABLE_BOX_ITEM_ID = -1001
 export const SELECTABLE_BOX_NAME = '選択式ボックス'
 export const SELECTABLE_BOX_ICON_FILE = 'item_icon_favor_selection.webp'
+export const ADVANCED_TAYLOR_STONE_KEY = 'advanced_taylor_stone'
 
 export const PRIORITY_ORDER: Record<string, number> = {
   top_priority: 5,

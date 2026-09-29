@@ -125,6 +125,7 @@ export interface OptimizeResult {
   craftable_boxes: {
     box_count: number
     source_item_count: number
+    taylor_stone_count?: number
   }
   error?: string
 }

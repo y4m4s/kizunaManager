@@ -120,6 +120,8 @@ export interface OptimizeResultRecord {
   craftable_boxes: {
     box_count: number
     source_item_count: number
+    // Older saved optimization results do not include material inventory.
+    taylor_stone_count?: number
   }
 }
 

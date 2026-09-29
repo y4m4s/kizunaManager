@@ -112,6 +112,8 @@ interface RawApi {
   set_inventory_quantity(item_id: number, quantity: number): Promise<{ ok: boolean }>
   list_boxes(): Promise<Record<string, number>>
   set_box_quantity(box_type: string, quantity: number): Promise<{ ok: boolean }>
+  list_crafting_materials(): Promise<Record<string, number>>
+  set_crafting_material_quantity(material_key: string, quantity: number): Promise<{ ok: boolean }>
 
   run_gift_search(gift_ids: number[]): Promise<SearchResult[]>
   run_student_search(student_ids: number[]): Promise<SearchResult[]>
@@ -197,6 +199,15 @@ export const api: RawApi = {
   },
   set_box_quantity(box_type, quantity) {
     return requestJson(`/api/boxes/${box_type}`, {
+      method: 'PUT',
+      body: JSON.stringify({ quantity }),
+    })
+  },
+  list_crafting_materials() {
+    return requestJson('/api/crafting-materials')
+  },
+  set_crafting_material_quantity(material_key, quantity) {
+    return requestJson(`/api/crafting-materials/${material_key}`, {
       method: 'PUT',
       body: JSON.stringify({ quantity }),
     })

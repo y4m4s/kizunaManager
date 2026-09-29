@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { calculateGiftExp, optimizeAllocation } from './optimizer.ts'
 import { calcRequiredExp, projectLevelAfterGain } from './bondCalculator.ts'
+import { SELECTABLE_BOX_ITEM_ID } from './config.ts'
 import type {
   ItemRecord,
   OptimizeResultRecord,
@@ -451,6 +452,37 @@ test('keeps contested gifts for primary students and excludes disabled semi prio
     assert.equal(result.results.find((row) => row.student_id === 2)?.allocated_exp, includeSemi ? 40 : 0)
     assert.equal(result.leftovers.reduce((sum, row) => sum + row.quantity, 0), includeSemi ? 0 : 1)
   }
+})
+
+test('craftable boxes require one advanced Taylor stone and two leftover orange gifts', () => {
+  const items = {
+    101: item(101, 'Orange'),
+    102: item(102, 'Purple', 'SSR'),
+    103: { ...item(103, 'Bouquet'), gift_kind: 'bouquet', exp_value: 60 },
+    [SELECTABLE_BOX_ITEM_ID]: { ...item(SELECTABLE_BOX_ITEM_ID, 'Box'), gift_kind: 'gift_box' },
+  }
+  for (const [orange, stones, expected] of [[7, 2, 2], [5, 9, 2], [6, 3, 3], [1, 8, 0], [0, 8, 0], [8, 0, 0]]) {
+    const inventory = { 101: orange, 102: 10, 103: 10, [SELECTABLE_BOX_ITEM_ID]: 10 }
+    const result = optimizeAllocation([], inventory, {}, items, 0, 0, 0, true, false, stones)
+    assert.deepEqual(result.craftable_boxes, {
+      box_count: expected, source_item_count: orange, taylor_stone_count: stones,
+    })
+    assert.equal(inventory[101], orange)
+    assert.equal(result.leftovers.find((row) => row.item_id === 101)?.quantity ?? 0, orange)
+  }
+  const withoutStones = optimizeAllocation([], { 101: 8 }, {}, items)
+  assert.equal(withoutStones.craftable_boxes.box_count, 0)
+})
+
+test('crafting counts only gifts left after allocation', () => {
+  const result = optimizeAllocation(
+    [plan(1, 1, 40)], { 101: 5 }, { 1: student(1, ['a']) },
+    { 101: item(101, 'Orange', 'SR', ['a']) }, 0, 0, 0, true, false, 10,
+  )
+  assert.equal(result.results[0].allocated_items[0].count, 1)
+  assert.deepEqual(result.craftable_boxes, {
+    box_count: 2, source_item_count: 4, taylor_stone_count: 10,
+  })
 })
 
 test('calculates birthday days even with zero daily EXP', () => {

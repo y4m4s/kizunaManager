@@ -4,7 +4,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http'
 import path from 'node:path'
 import { URL } from 'node:url'
 
-import { IMAGE_DIR, DEFAULT_PORT, FRONTEND_DIST_DIR, PRIORITY_LABELS } from './config.ts'
+import { ADVANCED_TAYLOR_STONE_KEY, IMAGE_DIR, DEFAULT_PORT, FRONTEND_DIST_DIR, PRIORITY_LABELS } from './config.ts'
 import { authorizeRequest, resolveSafePath } from './httpSecurity.ts'
 import { Database } from './database.ts'
 import {
@@ -437,6 +437,22 @@ async function handleApiRequest(
     return true
   }
 
+  if (pathname === '/api/crafting-materials' && method === 'GET') {
+    sendJson(response, 200, database.listCraftingMaterials())
+    return true
+  }
+
+  if (pathname === `/api/crafting-materials/${ADVANCED_TAYLOR_STONE_KEY}` && method === 'PUT') {
+    const body = await readJsonBody<{ quantity?: unknown }>(request)
+    if (typeof body.quantity !== 'number' || !Number.isSafeInteger(body.quantity) || body.quantity < 0) {
+      sendJson(response, 400, { error: '数量は0以上の整数で入力してください。' })
+      return true
+    }
+    database.setCraftingMaterialQuantity(ADVANCED_TAYLOR_STONE_KEY, body.quantity)
+    sendJson(response, 200, { ok: true })
+    return true
+  }
+
   const boxMatch = pathname.match(/^\/api\/boxes\/([^/]+)$/)
   if (boxMatch && method === 'PUT') {
     const body = await readJsonBody<{ quantity: number }>(request)
@@ -515,7 +531,7 @@ async function handleApiRequest(
       body.daily_other_cafe_taps === undefined
         ? legacyCafeTaps
         : Number(body.daily_other_cafe_taps || 0)
-    const [plans, inventory, students, items] = database.snapshotForOptimizer()
+    const [plans, inventory, students, items, taylorStoneCount] = database.snapshotForOptimizer()
     sendJson(
       response,
       200,
@@ -529,6 +545,7 @@ async function handleApiRequest(
         Number(body.daily_schedules || 0),
         body.include_semi_priority !== false,
         body.use_leftover_ssr_for_top === true,
+        taylorStoneCount,
       ),
     )
     return true

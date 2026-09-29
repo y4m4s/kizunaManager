@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Database } from './database.ts'
+import { ADVANCED_TAYLOR_STONE_KEY } from './config.ts'
 
 test('master refresh rejects incomplete data, backs up and preserves user data', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kizuna-db-test-'))
@@ -25,6 +26,7 @@ test('master refresh rejects incomplete data, backs up and preserves user data',
   db.upsertUserStudent(1, 20, 10, 'saved')
   db.savePlan(1, 100, 'top_priority')
   db.setInventoryQuantity(101, 7)
+  db.setCraftingMaterialQuantity(ADVANCED_TAYLOR_STONE_KEY, 3)
   const before = db.snapshotForOptimizer()
   for (const [nextStudents, nextItems] of [
     [[], items], [students, []], [students.slice(0, 1), items],
@@ -39,6 +41,7 @@ test('master refresh rejects incomplete data, backs up and preserves user data',
   assert.equal(db.getStudent(1)?.current_bond_level, 20)
   assert.equal(db.listPlans().length, 1)
   assert.equal(db.getInventoryMap()[101], 7)
+  assert.equal(db.listCraftingMaterials()[ADVANCED_TAYLOR_STONE_KEY], 3)
   const backups = fs.readdirSync(path.join(directory, 'backups'))
   assert.equal(backups.length, 1)
   const backup = new DatabaseSync(path.join(directory, 'backups', backups[0]), { readOnly: true })

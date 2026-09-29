@@ -1,4 +1,5 @@
 import { assetUrl } from '../../api'
+import advancedTaylorStoneIconUrl from '../../../../data/images/items/item_icon_shiftingcraftitem_2.webp'
 import { OPTIMIZE_PRIORITY_OPTIONS } from '../../constants'
 import { calcRequiredExp, cumulativeExpToLevel, formatNumber } from '../../lib/bond'
 import { effectIconUrl, SELECTABLE_BOX_ICON_URL } from '../../lib/uiAssets'
@@ -377,8 +378,30 @@ export function OptimizeResultsTable({
             <div className="optimize-leftovers-right-top">
               <aside className="optimize-leftovers-side">
                 <h3>作れる選択式ボックス</h3>
-                <p className="helper-text">{`橙 ${result.craftable_boxes.source_item_count} 個から換算`}</p>
-                <div className="opt-items-grid opt-items-grid-compact">
+                <p className="helper-text">
+                  {`未使用の橙 ${result.craftable_boxes.source_item_count} 個`}
+                </p>
+                <div className="opt-crafting-flow">
+                  <div
+                    className="opt-item-card rarity-sr"
+                    title={result.craftable_boxes.taylor_stone_count === undefined
+                      ? '上級テイラーストーン：記録なし（過去の結果）'
+                      : `上級テイラーストーン 所持数 ${result.craftable_boxes.taylor_stone_count} 個`}
+                  >
+                    <img
+                      alt="上級テイラーストーン"
+                      className="opt-item-image"
+                      height={56}
+                      src={advancedTaylorStoneIconUrl}
+                      width={56}
+                    />
+                    <span className="opt-item-badge">
+                      {result.craftable_boxes.taylor_stone_count === undefined
+                        ? '—'
+                        : `x${result.craftable_boxes.taylor_stone_count}`}
+                    </span>
+                  </div>
+                  <span className="opt-crafting-arrow" aria-label="製造可能数">⇒</span>
                   <div
                     className="opt-item-card gift-box"
                     title={`${SELECTABLE_BOX_LABEL} x${result.craftable_boxes.box_count}`}

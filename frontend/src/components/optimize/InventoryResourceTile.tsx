@@ -1,18 +1,22 @@
-import { SELECTABLE_BOX_ICON_URL } from '../../lib/uiAssets'
-
-type InventoryBoxTileProps = {
+type InventoryResourceTileProps = {
+  name: string
+  description: string
+  iconUrl: string
   quantity: string
   span: number
   onChange: (value: string) => void
   onCommit: () => void
 }
 
-export function InventoryBoxTile({
+export function InventoryResourceTile({
+  name,
+  description,
+  iconUrl,
   quantity,
   span,
   onChange,
   onCommit,
-}: InventoryBoxTileProps) {
+}: InventoryResourceTileProps) {
   return (
     <div
       className="inventory-box-tile-card"
@@ -20,20 +24,20 @@ export function InventoryBoxTile({
     >
       <div className="inventory-box-tile">
         <img
-          alt="選択式ボックス"
+          alt={name}
           className="inventory-box-icon"
           height={58}
-          src={SELECTABLE_BOX_ICON_URL}
+          src={iconUrl}
           width={58}
         />
         <div className="inventory-box-copy">
-          <strong>選択式ボックス</strong>
-          <small>橙大として計算</small>
+          <strong>{name}</strong>
+          <small>{description}</small>
         </div>
       </div>
 
       <input
-        aria-label="選択式ボックス在庫"
+        aria-label={`${name}在庫`}
         className="text-input compact inventory-tile-input"
         inputMode="numeric"
         type="text"
