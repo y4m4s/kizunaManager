@@ -133,6 +133,8 @@ DB に保存された画像パスが古い場所を指していても、起動�
 
 小規模ケースでは全探索の最適解と一致することをテストで確認していますが、大規模ケースで厳密な最適解を保証するものではありません。
 
+分配計算はワーカースレッド (`backend/src/optimizerWorker.ts`) で実行するため、計算中も他の API は応答します。ワーカーを起動できない環境では、メインスレッドで計算して結果を返します。
+
 ```powershell
 npm run test:backend
 frontend/node_modules/.bin/tsc -p backend/tsconfig.json

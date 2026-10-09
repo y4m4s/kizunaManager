@@ -16,9 +16,9 @@ import {
   EFFECT_ORDER,
   getGiftEffect,
   isSearchVisibleMatch,
-  optimizeAllocation,
   sortMatchingItems,
 } from './optimizer.ts'
+import { OptimizerRunner } from './optimizerRunner.ts'
 import { TaskStore } from './tasks.ts'
 import type {
   ItemRecord,
@@ -36,6 +36,8 @@ const ASSET_PREFIX = '/assets/'
 
 const database = new Database()
 const tasks = new TaskStore()
+// 分配計算はワーカースレッドで実行し、計算中も他の API を応答可能にする
+const optimizerRunner = new OptimizerRunner()
 
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
   response.statusCode = statusCode
@@ -535,7 +537,7 @@ async function handleApiRequest(
     sendJson(
       response,
       200,
-      optimizeAllocation(
+      await optimizerRunner.run(
         plans,
         inventory,
         students,
@@ -690,8 +692,10 @@ async function start(): Promise<void> {
     if (closing) return
     closing = true
     server.close(() => {
-      database.close()
-      process.exit(0)
+      void optimizerRunner.close().finally(() => {
+        database.close()
+        process.exit(0)
+      })
     })
   }
 

@@ -624,3 +624,20 @@ test('matches the exhaustive optimum on small random cases', () => {
     )
   }
 })
+
+test('repairs overshoot with gifts whose EXP is not a multiple of 20', () => {
+  const result = optimizeAllocation(
+    [plan(1, 1, 65)],
+    { 101: 1, 102: 2 },
+    { 1: student(1, ['a']) },
+    {
+      101: { ...item(101, 'Bouquet'), gift_kind: 'bouquet', exp_value: 25 },
+      102: item(102, 'Medium', 'SR', ['a']),
+    },
+  )
+  assert.equal(result.results[0].allocated_exp, 65)
+  assert.deepEqual(
+    result.results[0].allocated_items.map((allocation) => [allocation.item_id, allocation.count]).sort(),
+    [[101, 1], [102, 1]],
+  )
+})

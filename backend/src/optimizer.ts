@@ -1234,6 +1234,33 @@ function allocateStateGroup(
   }
 }
 
+const REPAIR_DP_WORK_LIMIT = 50_000_000
+
+function greatestCommonDivisor(left: number, right: number): number {
+  let a = Math.abs(left)
+  let b = Math.abs(right)
+  while (b > 0) {
+    const rest = a % b
+    a = b
+    b = rest
+  }
+  return a
+}
+
+function expGcd(values: number[]): number {
+  let divisor = 0
+  for (const value of values) {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      return 1
+    }
+    divisor = greatestCommonDivisor(divisor, value)
+    if (divisor === 1) {
+      return 1
+    }
+  }
+  return divisor || 1
+}
+
 function repairAllocationOvershoot(
   states: OptimizeStudentResult[],
   stock: Record<number, number>,
@@ -1291,10 +1318,20 @@ function repairAllocationOvershoot(
       continue
     }
 
-    const scale = candidates.every((candidate) => candidate.exp_per_item % 20 === 0) ? 20 : 1
+    // DP の刻みは候補 EXP の最大公約数。20 の倍数でない贈り物 (花束など) が混ざっても
+    // 配列長が必要 EXP そのものまで膨らまないようにする。
+    const scale = expGcd(candidates.map((candidate) => candidate.exp_per_item))
     const minimumSum = Math.ceil(need / scale)
     const maximumSum = Math.floor((currentAllocated - 1) / scale)
     if (minimumSum > maximumSum) {
+      continue
+    }
+    const chunkCount = candidates.reduce(
+      (total, candidate) => total + Math.ceil(Math.log2(Math.min(candidate.count, maximumSum) + 1)),
+      0,
+    )
+    if (chunkCount * (maximumSum + 1) > REPAIR_DP_WORK_LIMIT) {
+      // 刻みが細かすぎて DP が重くなる場合は修正を見送る (超過は残るが配分は有効)
       continue
     }
 
