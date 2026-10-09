@@ -558,26 +558,37 @@ function strategicItemValue(
   return value
 }
 
-function bestAlternativeMetrics(
+type AlternativeSummary = {
+  best_item_id: number | null
+  best_value: number
+  second_value: number
+  option_count: number
+  option_item_ids: Set<number>
+}
+
+// 生徒ごとに「最良・次点の代替候補」を一度だけ求める。
+// 候補アイテムを除外したときの最良値は、除外対象が最良なら次点、そうでなければ最良になる。
+function summarizeAlternatives(
   planState: OptimizeStudentResult,
   stock: Record<number, number>,
   itemsById: Record<number, ItemRecord>,
   evaluations: EvaluationCache,
   compatibilityStats: CompatibilityStats,
-  excludedItemId: number,
-): {
-  best_value: number
-  option_count: number
-} {
+): AlternativeSummary {
   const remainingExp = Number(planState.remaining_exp || 0)
   const studentEvaluations = evaluations[planState.student_id] || {}
-  let bestValue = Number.NEGATIVE_INFINITY
-  let optionCount = 0
+  const summary: AlternativeSummary = {
+    best_item_id: null,
+    best_value: Number.NEGATIVE_INFINITY,
+    second_value: Number.NEGATIVE_INFINITY,
+    option_count: 0,
+    option_item_ids: new Set<number>(),
+  }
 
   for (const [itemIdText, quantityValue] of Object.entries(stock)) {
     const itemId = Number(itemIdText)
     const quantity = Number(quantityValue)
-    if (quantity <= 0 || itemId === excludedItemId) {
+    if (quantity <= 0) {
       continue
     }
     const evaluation = studentEvaluations[itemId]
@@ -585,7 +596,8 @@ function bestAlternativeMetrics(
     if (!evaluation?.visible || !item || !canAllocateItemToPlan(planState, item)) {
       continue
     }
-    optionCount += 1
+    summary.option_count += 1
+    summary.option_item_ids.add(itemId)
     const usefulExp = Math.min(evaluation.gained_exp, remainingExp)
     const candidateValue = strategicItemValue(
       usefulExp,
@@ -594,15 +606,47 @@ function bestAlternativeMetrics(
       0,
       true,
     )
-    if (candidateValue > bestValue) {
-      bestValue = candidateValue
+    if (candidateValue > summary.best_value) {
+      summary.second_value = summary.best_value
+      summary.best_value = candidateValue
+      summary.best_item_id = itemId
+    } else if (candidateValue > summary.second_value) {
+      summary.second_value = candidateValue
     }
   }
 
+  return summary
+}
+
+function bestAlternativeMetrics(
+  summary: AlternativeSummary,
+  excludedItemId: number,
+): {
+  best_value: number
+  option_count: number
+} {
   return {
-    best_value: bestValue,
-    option_count: optionCount,
+    best_value: summary.best_item_id === excludedItemId ? summary.second_value : summary.best_value,
+    option_count: summary.option_count - (summary.option_item_ids.has(excludedItemId) ? 1 : 0),
   }
+}
+
+type AlternativeSummaries = Map<OptimizeStudentResult, AlternativeSummary>
+
+function alternativeSummaryFor(
+  summaries: AlternativeSummaries,
+  planState: OptimizeStudentResult,
+  stock: Record<number, number>,
+  itemsById: Record<number, ItemRecord>,
+  evaluations: EvaluationCache,
+  compatibilityStats: CompatibilityStats,
+): AlternativeSummary {
+  let summary = summaries.get(planState)
+  if (!summary) {
+    summary = summarizeAlternatives(planState, stock, itemsById, evaluations, compatibilityStats)
+    summaries.set(planState, summary)
+  }
+  return summary
 }
 
 function appendAllocation(
@@ -650,6 +694,7 @@ function buildCandidate(
   itemsById: Record<number, ItemRecord>,
   evaluations: EvaluationCache,
   compatibilityStats: CompatibilityStats,
+  alternativeSummaries: AlternativeSummaries,
 ): {
   plan_state: OptimizeStudentResult
   item: ItemRecord & { effect: string; effect_label: string; gained_exp: number }
@@ -673,11 +718,14 @@ function buildCandidate(
   const compatibilityCount = compatibility?.compatible_count ?? 0
   const candidateValue = strategicItemValue(usefulExp, item, compatibility, priorityRank)
   const alternative = bestAlternativeMetrics(
-    planState,
-    stock,
-    itemsById,
-    evaluations,
-    compatibilityStats,
+    alternativeSummaryFor(
+      alternativeSummaries,
+      planState,
+      stock,
+      itemsById,
+      evaluations,
+      compatibilityStats,
+    ),
     itemId,
   )
   const regret = alternative.option_count > 0
@@ -726,6 +774,7 @@ function pickBestCandidateForItem(
   itemsById: Record<number, ItemRecord>,
   evaluations: EvaluationCache,
   compatibilityStats: CompatibilityStats,
+  alternativeSummaries: AlternativeSummaries,
 ): {
   plan_state: OptimizeStudentResult
   item: ItemRecord & { effect: string; effect_label: string; gained_exp: number }
@@ -755,6 +804,7 @@ function pickBestCandidateForItem(
       itemsById,
       evaluations,
       compatibilityStats,
+      alternativeSummaries,
     )
     if (!candidate) {
       continue
@@ -787,6 +837,7 @@ function pickNextGlobalCandidate(
       }
     | null = null
   let bestScore: number[] | null = null
+  const alternativeSummaries: AlternativeSummaries = new Map()
 
   for (const [itemIdText, quantity] of Object.entries(stock)) {
     if (Number(quantity) <= 0) {
@@ -799,6 +850,7 @@ function pickNextGlobalCandidate(
       itemsById,
       evaluations,
       compatibilityStats,
+      alternativeSummaries,
     )
     if (!candidate) {
       continue
@@ -811,6 +863,7 @@ function pickNextGlobalCandidate(
 
   return bestCandidate
 }
+
 function applyCandidate(
   candidate: {
     plan_state: OptimizeStudentResult
@@ -1324,6 +1377,239 @@ function repairAllocationOvershoot(
   return changed
 }
 
+// ---- 完了人数優先の局所探索 ----
+// 貪欲配分の後に、生徒間・在庫との「移動」と「入れ替え」を試し、
+// 優先度グループ順 (最優先 → 優先 → 準優先) に
+// [完了人数, -不足EXP, 有効EXP, -無駄EXP] を辞書式に比較して改善する手だけを採用する。
+// 本来の指標がすべて同点のときは、最後のキーとして各グループの「不足EXPの二乗和」が
+// 大きい方 (= 不足を一部の生徒に寄せ、他の生徒を完了に近づける方) を選ぶ。
+// これにより、2 手以上かけないと完了できない場面でも平坦な評価で止まらない。
+// 採用するたびに評価値が厳密に増えるため必ず停止する。
+const FULFILLMENT_GROUPS = ['top_priority', 'priority', 'semi_priority']
+const FULFILLMENT_METRICS = 4
+const LOCAL_SEARCH_MAX_UNITS = 4
+const LOCAL_SEARCH_MAX_SWEEPS = 64
+
+const CONCENTRATION_OFFSET = FULFILLMENT_GROUPS.length * FULFILLMENT_METRICS
+
+function fulfillmentContribution(
+  allocatedExp: number,
+  needExp: number,
+  out: number[],
+  group: number,
+  sign: number,
+): void {
+  const offset = group * FULFILLMENT_METRICS
+  const deficit = Math.max(0, needExp - allocatedExp)
+  out[offset] += sign * (deficit === 0 ? 1 : 0)
+  out[offset + 1] -= sign * deficit
+  out[offset + 2] += sign * Math.min(allocatedExp, needExp)
+  out[offset + 3] -= sign * Math.max(0, allocatedExp - needExp)
+  out[CONCENTRATION_OFFSET + group] += sign * deficit * deficit
+}
+
+function isPositiveDelta(delta: number[]): boolean {
+  for (const value of delta) {
+    if (value > 0) return true
+    if (value < 0) return false
+  }
+  return false
+}
+
+function improveFulfillmentByLocalSearch(
+  states: OptimizeStudentResult[],
+  stock: Record<number, number>,
+  itemsById: Record<number, ItemRecord>,
+  evaluations: EvaluationCache,
+): boolean {
+  const stateCount = states.length
+  if (!stateCount) {
+    return false
+  }
+  const pool = stateCount
+  const groupIndex: number[] = []
+  const need: number[] = []
+  const allocated: number[] = []
+  // 動かせる (= その生徒にとって最適化対象の) 割り当てのみを保持する。
+  // 余りSSRの補填など対象外の割り当ては EXP にのみ含めて固定する。
+  const held: Array<Map<number, number>> = []
+  const expCache: Array<Map<number, number | null>> = []
+
+  const expFor = (participant: number, itemId: number): number | null => {
+    if (participant === pool) {
+      return 0
+    }
+    const cache = expCache[participant]
+    if (cache.has(itemId)) {
+      return cache.get(itemId) ?? null
+    }
+    const state = states[participant]
+    const item = itemsById[itemId]
+    const evaluation = evaluations[state.student_id]?.[itemId]
+    const exp = item && evaluation?.visible && evaluation.gained_exp > 0 && canAllocateItemToPlan(state, item)
+      ? evaluation.gained_exp
+      : null
+    cache.set(itemId, exp)
+    return exp
+  }
+
+  for (let index = 0; index < stateCount; index += 1) {
+    const state = states[index]
+    const group = FULFILLMENT_GROUPS.indexOf(String(state.priority || 'priority'))
+    groupIndex.push(group < 0 ? FULFILLMENT_GROUPS.length - 1 : group)
+    need.push(Math.max(0, Number(state.required_exp || 0) - Number(state.passive_exp || 0)))
+    allocated.push(Number(state.allocated_exp || 0))
+    expCache.push(new Map())
+    const movable = new Map<number, number>()
+    held.push(movable)
+    for (const allocation of state.allocated_items) {
+      if (expFor(index, allocation.item_id) === allocation.exp_per_item) {
+        movable.set(allocation.item_id, (movable.get(allocation.item_id) || 0) + allocation.count)
+      }
+    }
+  }
+  const poolHeld = new Map<number, number>()
+  for (const [itemIdText, quantityValue] of Object.entries(stock)) {
+    const quantity = Number(quantityValue)
+    if (quantity > 0 && itemsById[Number(itemIdText)]) {
+      poolHeld.set(Number(itemIdText), quantity)
+    }
+  }
+  held.push(poolHeld)
+
+  const delta = new Array<number>(CONCENTRATION_OFFSET + FULFILLMENT_GROUPS.length).fill(0)
+  const evaluateChange = (first: number, firstNext: number, second: number, secondNext: number): boolean => {
+    delta.fill(0)
+    for (const [participant, next] of [[first, firstNext], [second, secondNext]]) {
+      if (participant === pool) continue
+      const group = groupIndex[participant]
+      fulfillmentContribution(allocated[participant], need[participant], delta, group, -1)
+      fulfillmentContribution(next, need[participant], delta, group, 1)
+    }
+    return isPositiveDelta(delta)
+  }
+  const shift = (from: number, to: number, itemId: number, count: number): void => {
+    const fromCount = (held[from].get(itemId) || 0) - count
+    if (fromCount > 0) held[from].set(itemId, fromCount)
+    else held[from].delete(itemId)
+    held[to].set(itemId, (held[to].get(itemId) || 0) + count)
+    if (from !== pool) allocated[from] -= count * (expFor(from, itemId) || 0)
+    if (to !== pool) allocated[to] += count * (expFor(to, itemId) || 0)
+  }
+
+  const participants = Array.from({ length: stateCount + 1 }, (_, index) => index)
+  const sortedItemIds = (participant: number): number[] =>
+    [...held[participant].keys()].sort((left, right) => left - right)
+
+  let changed = false
+  for (let sweep = 0; sweep < LOCAL_SEARCH_MAX_SWEEPS; sweep += 1) {
+    let improved = false
+    for (const giver of participants) {
+      for (const itemId of sortedItemIds(giver)) {
+        for (const receiver of participants) {
+          if (receiver === giver) continue
+          const receiverExp = expFor(receiver, itemId)
+          if (receiverExp === null) continue
+          const giverExp = expFor(giver, itemId) || 0
+          for (let count = 1; count <= LOCAL_SEARCH_MAX_UNITS; count += 1) {
+            if ((held[giver].get(itemId) || 0) < count) break
+            const giverNext = allocated[giver] - count * giverExp
+            const receiverNext = allocated[receiver] + count * receiverExp
+            // 単純な移動 (在庫からの追加・在庫への返却を含む)
+            if (evaluateChange(giver, giverNext, receiver, receiverNext)) {
+              shift(giver, receiver, itemId, count)
+              improved = true
+              break
+            }
+            // 入れ替え: giver の itemId × count と receiver の otherId × otherCount を交換
+            let swapped = false
+            for (const otherId of sortedItemIds(receiver)) {
+              if (otherId === itemId) continue
+              const giverOtherExp = expFor(giver, otherId)
+              if (giverOtherExp === null) continue
+              const receiverOtherExp = expFor(receiver, otherId) || 0
+              const receiverOtherCount = held[receiver].get(otherId) || 0
+              // 受け手の手持ちで足りない分は在庫から補ってよい (生徒 2 人 + 在庫の 3 者交換)
+              const poolOtherCount = receiver === pool || giver === pool ? 0 : (held[pool].get(otherId) || 0)
+              for (let otherCount = 1; otherCount <= LOCAL_SEARCH_MAX_UNITS; otherCount += 1) {
+                const fromReceiver = Math.min(otherCount, receiverOtherCount)
+                const fromPool = otherCount - fromReceiver
+                if (fromPool > poolOtherCount) break
+                if (evaluateChange(
+                  giver,
+                  giverNext + otherCount * giverOtherExp,
+                  receiver,
+                  receiverNext - fromReceiver * receiverOtherExp,
+                )) {
+                  shift(giver, receiver, itemId, count)
+                  shift(receiver, giver, otherId, fromReceiver)
+                  if (fromPool > 0) shift(pool, giver, otherId, fromPool)
+                  swapped = true
+                  break
+                }
+              }
+              if (swapped) break
+            }
+            if (swapped) {
+              improved = true
+              break
+            }
+          }
+        }
+      }
+    }
+    if (!improved) break
+    changed = true
+  }
+
+  if (!changed) {
+    return false
+  }
+
+  // 結果を状態・在庫へ反映 (既存の割り当て行の順序はできるだけ保つ)
+  for (let index = 0; index < stateCount; index += 1) {
+    const state = states[index]
+    const before = new Map<number, number>()
+    for (const allocation of state.allocated_items) {
+      if (expFor(index, allocation.item_id) === allocation.exp_per_item) {
+        before.set(allocation.item_id, (before.get(allocation.item_id) || 0) + allocation.count)
+      }
+    }
+    const itemIds = new Set([...before.keys(), ...held[index].keys()])
+    for (const itemId of itemIds) {
+      const diff = (held[index].get(itemId) || 0) - (before.get(itemId) || 0)
+      if (diff === 0) continue
+      const evaluation = evaluations[state.student_id][itemId]
+      if (diff > 0) {
+        appendAllocationCount(state, {
+          ...itemsById[itemId],
+          effect: evaluation.effect,
+          effect_label: evaluation.effect_label,
+          gained_exp: evaluation.gained_exp,
+        }, diff)
+        continue
+      }
+      const allocation = state.allocated_items.find(
+        (row) => row.item_id === itemId && row.exp_per_item === evaluation.gained_exp,
+      )
+      if (allocation) {
+        allocation.count += diff
+        allocation.total_exp = allocation.exp_per_item * allocation.count
+      }
+    }
+    state.allocated_items = state.allocated_items.filter((allocation) => allocation.count > 0)
+    state.allocated_exp = allocated[index]
+    state.remaining_exp = Math.max(0, need[index] - allocated[index])
+  }
+  for (const itemId of Object.keys(stock)) {
+    delete stock[Number(itemId)]
+  }
+  for (const [itemId, quantity] of poolHeld) {
+    if (quantity > 0) stock[itemId] = quantity
+  }
+  return true
+}
+
 function allocateLeftoverSsrToTopPriority(
   states: OptimizeStudentResult[],
   stock: Record<number, number>,
@@ -1505,14 +1791,17 @@ export function optimizeAllocation(
         allocateStateGroup(semiPriorityStates, stock, itemsById, evaluations)
       }
     } while (repairAllocationOvershoot(activeStates, stock, itemsById, evaluations))
+    improveFulfillmentByLocalSearch(activeStates, stock, itemsById, evaluations)
     if (useLeftoverSsrForTop) {
       allocateLeftoverSsrToTopPriority(primaryStates, stock, studentsById, itemsById)
     }
     rebalanceEquivalentAllocationClasses(activeStates, stock, itemsById, evaluations)
 
     // Rebalancing preserves each student's EXP but can release a gift usable by
-    // an unmet plan. Each extra pass must allocate one, reducing remaining EXP;
-    // repairs and equivalent swaps never increase it, so the loop terminates.
+    // an unmet plan. Every step of a pass (greedy allocation, overshoot repair,
+    // local search, leftover SSR) strictly improves the lexicographic fulfillment
+    // score or leaves the state unchanged, and equivalent swaps keep it equal,
+    // so an extra pass is only taken after a strict improvement and the loop terminates.
     const compatibilityStats = buildCompatibilityStats(activeStates, stock, evaluations, itemsById)
     if (!pickNextGlobalCandidate(activeStates, stock, itemsById, evaluations, compatibilityStats)) {
       break

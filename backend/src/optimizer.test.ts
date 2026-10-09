@@ -558,3 +558,69 @@ test('preserves stock and EXP across varied preferences, priorities and options'
     assert.equal(JSON.stringify({ students, items, inventory, plans }), before)
   }
 })
+
+test('completes the student closest to the goal instead of spreading a scarce gift', () => {
+  const plans = [plan(1, 1, 240, 'top_priority'), plan(3, 3, 40, 'top_priority')]
+  const studentsById = { 1: student(1, ['b']), 3: student(3, ['b']) }
+  const itemsById = { 102: item(102, 'Medium', 'SR', ['b']) }
+  const result = optimizeAllocation(plans, { 102: 1 }, studentsById, itemsById)
+  assert.equal(result.results.find((row) => row.student_id === 3)?.remaining_exp, 0)
+  assert.equal(result.results.find((row) => row.student_id === 1)?.allocated_exp, 0)
+})
+
+test('concentrates gifts so that one more student completes', () => {
+  const plans = [plan(2, 2, 120), plan(4, 4, 160)]
+  const studentsById = { 2: student(2, ['b']), 4: student(4, ['b']) }
+  const itemsById = { 101: item(101, 'B1', 'SR', ['b']), 103: item(103, 'B2', 'SR', ['b']) }
+  const inventory = { 101: 1, 103: 3 }
+  const result = optimizeAllocation(plans, inventory, studentsById, itemsById)
+  assert.deepEqual(
+    fulfillmentScore(result.results),
+    exactFulfillmentScore(plans, inventory, studentsById, itemsById),
+  )
+  assert.equal(result.results.filter((row) => row.remaining_exp === 0).length, 1)
+})
+
+test('swaps gifts across students to remove top priority waste', () => {
+  const plans = [plan(2, 2, 120, 'top_priority'), plan(4, 4, 240, 'semi_priority')]
+  const studentsById = { 2: student(2, ['b']), 4: student(4, ['b']) }
+  const itemsById = { 101: item(101, 'SSR', 'SSR', ['b']), 103: item(103, 'SR', 'SR', ['b']) }
+  const inventory = { 101: 1, 103: 3 }
+  const result = optimizeAllocation(plans, inventory, studentsById, itemsById)
+  const top = result.results.find((row) => row.student_id === 2)!
+  assert.equal(top.allocated_exp, 120)
+  assert.deepEqual(top.allocated_items.map((row) => [row.item_id, row.count]), [[103, 3]])
+  assert.equal(result.results.find((row) => row.student_id === 4)?.allocated_exp, 180)
+})
+
+test('matches the exhaustive optimum on small random cases', () => {
+  let seed = 20261009
+  const random = (limit: number) => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    return seed % limit
+  }
+  for (let sample = 0; sample < 400; sample += 1) {
+    const studentsById: Record<number, StudentRecord> = {}
+    const itemsById: Record<number, ItemRecord> = {}
+    const inventory: Record<number, number> = {}
+    const plans: PlanRecord[] = []
+    const studentCount = 2 + random(3)
+    const itemCount = 2 + random(3)
+    for (let id = 1; id <= studentCount; id += 1) {
+      studentsById[id] = student(id, ['a', 'b', 'c'].filter(() => random(2)))
+      plans.push(plan(id, id, (1 + random(12)) * 20, PRIORITY_SCORE_ORDER[random(3)]))
+    }
+    let units = 0
+    for (let id = 101; id < 101 + itemCount; id += 1) {
+      itemsById[id] = item(id, String(id), random(3) ? 'SR' : 'SSR', ['a', 'b', 'c'].filter(() => random(2)))
+      inventory[id] = Math.min(random(4), 7 - units)
+      units += inventory[id]
+    }
+    const result = optimizeAllocation(plans, inventory, studentsById, itemsById)
+    assert.deepEqual(
+      fulfillmentScore(result.results),
+      exactFulfillmentScore(plans, inventory, studentsById, itemsById),
+      JSON.stringify({ plans: plans.map((row) => [row.student_id, row.priority, row.required_exp]), inventory }),
+    )
+  }
+})
