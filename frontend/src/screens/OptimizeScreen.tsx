@@ -26,7 +26,8 @@ const SETTINGS_KEY_OTHER = 'ui.optimize.daily_other_cafe_taps'
 const SETTINGS_KEY_SCHEDULES = 'ui.optimize.daily_schedules'
 const SETTINGS_KEY_USE_LEFTOVER_SSR = 'ui.optimize.use_leftover_ssr'
 const CAFE_TAP_EXP = 15
-const SCHEDULE_EXPECTED_EXP = 31.25
+// 25% の確率で付くボーナス (+25) は見込みに加味しない (backend の optimizer.ts と同じ前提)
+const SCHEDULE_EXP = 25
 
 function sanitizeCountInput(value: string): string {
   const digitsOnly = value.replace(/[^\d]/g, '')
@@ -79,7 +80,7 @@ export function OptimizeScreen({
   const [savedResult, setSavedResult] = useState<OptimizeResult | null>(null)
   const [quickSaving, setQuickSaving] = useState(false)
   const currentSaved = result !== null && savedResult === result
-  const dailyScheduleExp = parseCountInput(dailySchedules) * SCHEDULE_EXPECTED_EXP
+  const dailyScheduleExp = parseCountInput(dailySchedules) * SCHEDULE_EXP
   const topPriorityDailyExp =
     parseCountInput(dailyTopPriorityCafeTaps) * CAFE_TAP_EXP + dailyScheduleExp
   const otherPriorityDailyExp =
@@ -405,7 +406,7 @@ export function OptimizeScreen({
           <strong>計算条件</strong>
           <ul>
             <li>{`カフェ + ${CAFE_TAP_EXP} EXP / 回`}</li>
-            <li>{`スケジュール + ${formatExpPreview(SCHEDULE_EXPECTED_EXP)} EXP / 回 ( Rank 12 ボーナス期待値込み )`}</li>
+            <li>{`スケジュール + ${SCHEDULE_EXP} EXP / 回 ( ※ 25% で付くボーナスは加味していません )`}</li>
           </ul>
         </div>
       </section>

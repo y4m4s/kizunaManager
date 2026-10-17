@@ -641,3 +641,28 @@ test('repairs overshoot with gifts whose EXP is not a multiple of 20', () => {
     [[101, 1], [102, 1]],
   )
 })
+
+test('fills leftover SSR into the top priority student closest to completion first', () => {
+  const plans = [plan(1, 1, 1000, 'top_priority'), plan(2, 2, 100, 'top_priority')]
+  const studentsById = { 1: student(1), 2: student(2) }
+  const itemsById = { 101: item(101, 'SSR medium', 'SSR') }
+  const result = optimizeAllocation(plans, { 101: 5 }, studentsById, itemsById, 0, 0, 0, true, true)
+  const byStudent = (studentId: number) =>
+    result.results.find((row) => row.student_id === studentId)
+  assert.equal(byStudent(2)?.allocated_exp, 120)
+  assert.equal(byStudent(2)?.remaining_exp, 0)
+  assert.equal(byStudent(1)?.allocated_exp, 480)
+  assert.equal(byStudent(1)?.remaining_exp, 520)
+  assert.equal(result.leftovers.length, 0)
+})
+
+test('schedule passive EXP excludes the 25% bonus', () => {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const birthday = `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}`
+  const result = optimizeAllocation(
+    [plan(1, 1, 1000)], {}, { 1: { ...student(1), birthday } }, {}, 0, 0, 4,
+  )
+  assert.equal(result.results[0].days_until_birthday, 1)
+  assert.equal(result.results[0].passive_exp, 100)
+})

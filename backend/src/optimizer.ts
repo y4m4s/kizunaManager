@@ -44,9 +44,9 @@ const GIFT_EXP_VALUES: Record<string, Record<string, number>> = {
 }
 
 const CAFE_TAP_BOND_EXP = 15
+// スケジュールの絆EXPは基本値のみで見込む。
+// 25% の確率で付くボーナス (+25) は運次第なので、見込みには加味しない (不足側に倒さないため)。
 const SCHEDULE_BOND_EXP = 25
-const SCHEDULE_BONUS_CHANCE = 0.25
-const SCHEDULE_BONUS_EXP = 25
 const BIRTHDAY_PATTERN = /(\d{1,2})\D+(\d{1,2})/
 
 function asStringArray(value: unknown): string[] {
@@ -144,7 +144,7 @@ function plannedPassiveExp(
   const days = daysUntilNextBirthday(student, today)
   const cafeExp = Math.max(0, dailyCafeTaps) * CAFE_TAP_BOND_EXP
   const scheduleCount = Math.max(0, dailySchedules)
-  const scheduleExp = scheduleCount * (SCHEDULE_BOND_EXP + (SCHEDULE_BONUS_CHANCE * SCHEDULE_BONUS_EXP))
+  const scheduleExp = scheduleCount * SCHEDULE_BOND_EXP
   const totalExp = cafeExp + scheduleExp
   if (totalExp <= 0) {
     return [0, days]
@@ -1647,6 +1647,10 @@ function improveFulfillmentByLocalSearch(
   return true
 }
 
+// 余りSSR (中など、通常の分配では候補にしないもの) を最優先の生徒に補填する。
+// 完了人数優先: 残りEXPが少ない生徒から順に満たす。
+// 1個で残りを満たせるならその中で最も EXP が小さいもの (無駄を最小に)、
+// 満たせないなら最も EXP が大きいものを1個ずつ渡す。
 function allocateLeftoverSsrToTopPriority(
   states: OptimizeStudentResult[],
   stock: Record<number, number>,
@@ -1662,33 +1666,62 @@ function allocateLeftoverSsrToTopPriority(
       String(item.gift_kind || 'gift').toLowerCase() === 'gift',
     )
     .sort((left, right) => left.name.localeCompare(right.name, 'ja') || left.id - right.id)
+  if (!ssrItems.length) {
+    return
+  }
 
-  for (const state of states) {
-    if (String(state.priority || 'priority') !== 'top_priority' || state.remaining_exp <= 0) {
-      continue
-    }
+  const targets = states
+    .filter((state) =>
+      String(state.priority || 'priority') === 'top_priority' &&
+      Number(state.remaining_exp || 0) > 0 &&
+      Boolean(studentsById[state.student_id]),
+    )
+    .sort((left, right) =>
+      Number(left.remaining_exp || 0) - Number(right.remaining_exp || 0) ||
+      String(left.student_name || '').localeCompare(String(right.student_name || ''), 'ja') ||
+      left.student_id - right.student_id,
+    )
+
+  for (const state of targets) {
     const student = studentsById[state.student_id]
-    if (!student) {
-      continue
-    }
-    for (const item of ssrItems) {
-      const quantity = Number(stock[item.id] || 0)
-      if (quantity <= 0 || state.remaining_exp <= 0) {
-        continue
-      }
+    const options = ssrItems.flatMap((item) => {
       const [effect, gainedExp] = calculateGiftExp(student, item, itemsById)
-      if (gainedExp <= 0) {
-        continue
+      return gainedExp > 0 ? [{ item, effect, gained_exp: gainedExp }] : []
+    })
+    const given = new Map<number, number>()
+
+    while (state.remaining_exp > 0) {
+      let covering: (typeof options)[number] | null = null
+      let largest: (typeof options)[number] | null = null
+      for (const option of options) {
+        if (Number(stock[option.item.id] || 0) <= 0) {
+          continue
+        }
+        if (option.gained_exp >= state.remaining_exp &&
+          (!covering || option.gained_exp < covering.gained_exp)) {
+          covering = option
+        }
+        if (!largest || option.gained_exp > largest.gained_exp) {
+          largest = option
+        }
       }
-      const count = Math.min(quantity, Math.ceil(state.remaining_exp / gainedExp))
-      stock[item.id] -= count
-      state.allocated_exp += gainedExp * count
-      state.remaining_exp = Math.max(0, state.remaining_exp - (gainedExp * count))
+      const selected = covering || largest
+      if (!selected) {
+        break
+      }
+      stock[selected.item.id] -= 1
+      state.allocated_exp += selected.gained_exp
+      state.remaining_exp = Math.max(0, state.remaining_exp - selected.gained_exp)
+      given.set(selected.item.id, (given.get(selected.item.id) || 0) + 1)
+    }
+
+    for (const option of options) {
+      const count = given.get(option.item.id) || 0
       appendAllocationCount(state, {
-        ...item,
-        effect,
-        effect_label: EFFECT_LABELS[effect],
-        gained_exp: gainedExp,
+        ...option.item,
+        effect: option.effect,
+        effect_label: EFFECT_LABELS[option.effect],
+        gained_exp: option.gained_exp,
       }, count)
     }
   }
