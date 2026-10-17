@@ -15,6 +15,11 @@ import type { Plan, PriorityKey, Student } from '../types'
 import { ConfirmModal } from '../components/common/ConfirmModal'
 import type { ToastKind } from '../components/common/Toast'
 import { ManageRow } from '../components/manage/ManageRow'
+import {
+  BondScreenshotImportModal,
+  type BondImportUpdate,
+} from '../components/manage/BondScreenshotImportModal'
+import { imageFilesFrom } from '../lib/screenshotImport/files'
 import { SaveIndicator, type SaveStatus } from '../components/manage/SaveIndicator'
 
 type ManageScreenProps = {
@@ -75,6 +80,9 @@ export function ManageScreen({
   const [activeCandidateId, setActiveCandidateId] = useState<number | null>(null)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [hiddenPriorities, setHiddenPriorities] = useState<Set<PriorityFilterKey>>(new Set())
+  // スクショ取り込みダイアログ (null なら閉じている)
+  const [importFiles, setImportFiles] = useState<File[] | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   function plansByStudentFrom(rows: Plan[]): Record<number, Plan> {
     return Object.fromEntries(rows.map((plan) => [plan.student_id, plan])) as Record<number, Plan>
@@ -227,7 +235,21 @@ export function ManageScreen({
     return () => {
       disposed = true
     }
-  }, [bridgeReady, refreshToken])
+  }, [bridgeReady, refreshToken, reloadToken])
+
+  // ダイアログが閉じているときに画像が貼り付けられたら、取り込みを始める
+  useEffect(() => {
+    if (importFiles !== null) return
+    const handlePaste = (event: ClipboardEvent) => {
+      const files = imageFilesFrom(event.clipboardData?.items)
+      if (files.length) {
+        event.preventDefault()
+        setImportFiles(files)
+      }
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [importFiles])
 
   useEffect(() => {
     return () => {
@@ -602,6 +624,35 @@ export function ManageScreen({
     onDataChanged()
   }
 
+  // スクショから読み取った絆ランクを保存する。
+  // ランクが変わった生徒は、手入力と同じくそのランクの経験値を 0 から数える。
+  async function applyBondImport(updates: BondImportUpdate[]) {
+    setImportFiles(null)
+    let saved = 0
+    let failed = 0
+    for (const update of updates) {
+      const student = studentsRef.current.find((row) => row.id === update.studentId)
+      if (!student) continue
+      const level = clampLevel(update.level)
+      const exp = student.is_owned && level === student.current_bond_level ? student.current_bond_exp : 0
+      try {
+        await api.upsert_user_student(student.id, level, exp, student.notes || '')
+        saved += 1
+      } catch {
+        failed += 1
+      }
+    }
+    // 一覧と下書きを読み直して、取り込んだ値を表示に反映する
+    for (const update of updates) dirtyStudentIdsRef.current.delete(update.studentId)
+    setReloadToken((value) => value + 1)
+    onDataChanged()
+    if (failed) {
+      onToast(`${saved} 人を更新しました。${failed} 人は保存に失敗しました。`, 'error')
+    } else {
+      onToast(`${saved} 人の絆ランクを更新しました。`, 'success')
+    }
+  }
+
   function handleScreenKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault()
@@ -610,17 +661,36 @@ export function ManageScreen({
   }
 
   return (
-    <div className="screen-stack" onKeyDown={handleScreenKeyDown}>
+    <div
+      className="screen-stack"
+      onDragOver={(event) => {
+        if (importFiles === null && [...event.dataTransfer.types].includes('Files')) event.preventDefault()
+      }}
+      onDrop={(event) => {
+        if (importFiles !== null) return
+        const files = imageFilesFrom(event.dataTransfer.files)
+        if (files.length) {
+          event.preventDefault()
+          setImportFiles(files)
+        }
+      }}
+      onKeyDown={handleScreenKeyDown}
+    >
       <section className="card-shell screen-header">
         <div className="section-head">
           <div>
             <h2>管理</h2>
             <p>追加、現在絆、目標、優先度をひとつの一覧で管理できます。</p>
           </div>
-          <div className="summary-badges">
-            <span>{`管理中 ${summary.totalCount}人`}</span>
-            <span>{`優先 ${summary.priorityCount}人`}</span>
-            <span>{`必要EXP ${formatNumber(summary.totalRequired)}`}</span>
+          <div className="manage-head-actions">
+            <div className="summary-badges">
+              <span>{`管理中 ${summary.totalCount}人`}</span>
+              <span>{`優先 ${summary.priorityCount}人`}</span>
+              <span>{`必要EXP ${formatNumber(summary.totalRequired)}`}</span>
+            </div>
+            <button className="btn screenshot-import-button" type="button" onClick={() => setImportFiles([])}>
+              スクショから取り込み
+            </button>
           </div>
         </div>
       </section>
@@ -772,6 +842,15 @@ export function ManageScreen({
         status={saveStatus}
         onFadeOut={() => setSaveStatus('idle')}
       />
+
+      {importFiles !== null ? (
+        <BondScreenshotImportModal
+          initialFiles={importFiles}
+          students={students}
+          onApply={(updates) => void applyBondImport(updates)}
+          onClose={() => setImportFiles(null)}
+        />
+      ) : null}
     </div>
   )
 }

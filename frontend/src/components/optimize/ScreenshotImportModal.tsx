@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { DragEvent } from 'react'
-import { imageFilesFrom } from '../../lib/screenshotImport/files'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { loadIconReferences, loadScreenshot } from '../../lib/screenshotImport/loadImages'
 import {
   inferZeroItems,
@@ -12,15 +10,8 @@ import {
 } from '../../lib/screenshotImport/recognize'
 import type { Item } from '../../types'
 import { IconThumb } from '../common/IconThumb'
-
-type ShotState = {
-  id: number
-  name: string
-  previewUrl: string
-  status: 'waiting' | 'reading' | 'done' | 'error'
-  message: string
-  reading: ScreenshotReading | null
-}
+import { ScreenshotDropZone } from '../screenshot/ScreenshotDropZone'
+import { useScreenshotQueue, type ShotResult } from '../screenshot/useScreenshotQueue'
 
 type RowState = {
   checked: boolean
@@ -33,8 +24,6 @@ type ScreenshotImportModalProps = {
   onApply: (updates: Array<{ itemId: number; quantity: number }>) => void
   onClose: () => void
 }
-
-let nextShotId = 1
 
 // 選択式ボックスと上級テイラーストーンはゲームのアイテム一覧に出ないので、取り込みの対象にしない
 // (写っていなくても 0 にしない)
@@ -53,24 +42,27 @@ type ResultRow = MergedReading & {
 }
 
 export function ScreenshotImportModal({ items, initialFiles, onApply, onClose }: ScreenshotImportModalProps) {
-  const [shots, setShots] = useState<ShotState[]>([])
   // ユーザーが触った行だけ保持する。触っていない行は読み取り結果から決める。
   const [overrides, setOverrides] = useState<Record<number, RowState>>({})
   const [zeroUncertain, setZeroUncertain] = useState(false)
-  const [dragging, setDragging] = useState(false)
   const iconsRef = useRef<Promise<IconReference[]> | null>(null)
-  const queueRef = useRef<Promise<void>>(Promise.resolve())
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const initialFilesRef = useRef(initialFiles)
-  const startedRef = useRef(false)
-  const previewUrlsRef = useRef<string[]>([])
-  const aliveRef = useRef(false)
 
   const targetItems = useMemo(() => items.filter(isImportTarget), [items])
   const itemsById = useMemo(() => new Map(targetItems.map((item) => [item.id, item])), [targetItems])
   const itemOrder = useMemo(() => new Map(items.map((item, index) => [item.id, index])), [items])
   // ゲームの「デフォルト」の並び = アイテム ID 順
   const gameOrder = useMemo(() => targetItems.map((item) => item.id).sort((a, b) => a - b), [targetItems])
+
+  const read = useCallback(async (file: File): Promise<ShotResult<ScreenshotReading>> => {
+    if (!iconsRef.current) iconsRef.current = loadIconReferences(targetItems)
+    const [image, references] = await Promise.all([loadScreenshot(file), iconsRef.current])
+    if (!references.length) throw new Error('贈り物アイコンを読み込めませんでした。画像ダウンロードを済ませてください。')
+    const reading = readScreenshot(image, references)
+    if (reading.error) return { reading, message: reading.error, error: true }
+    const known = reading.cards.filter((card) => card.itemId !== null).length
+    return { reading, message: `${known} 件を読み取り` }
+  }, [targetItems])
+  const { shots, addFiles, busy } = useScreenshotQueue({ initialFiles, read, onClose })
 
   const readings = useMemo(
     () => shots.flatMap((shot) => (shot.status === 'done' && shot.reading ? [shot.reading] : [])),
@@ -110,92 +102,6 @@ export function ScreenshotImportModal({ items, initialFiles, onApply, onClose }:
     }
   }
 
-  const addFiles = useCallback((files: File[]) => {
-    if (!files.length) return
-    const added = files.map((file) => ({
-      id: nextShotId++,
-      name: file.name || 'クリップボードの画像',
-      previewUrl: URL.createObjectURL(file),
-      status: 'waiting' as const,
-      message: '',
-      reading: null,
-    }))
-    previewUrlsRef.current.push(...added.map((shot) => shot.previewUrl))
-    setShots((current) => [...current, ...added])
-    if (!iconsRef.current) iconsRef.current = loadIconReferences(items.filter(isImportTarget))
-    const icons = iconsRef.current
-
-    added.forEach((shot, index) => {
-      const file = files[index]
-      queueRef.current = queueRef.current.then(async () => {
-        const update = (patch: Partial<ShotState>) =>
-          setShots((current) => current.map((row) => (row.id === shot.id ? { ...row, ...patch } : row)))
-        update({ status: 'reading' })
-        try {
-          const [image, references] = await Promise.all([loadScreenshot(file), icons])
-          if (!references.length) throw new Error('贈り物アイコンを読み込めませんでした。画像ダウンロードを済ませてください。')
-          // 描画を止めないよう、読み取りの前に 1 フレーム譲る
-          await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
-          const reading = readScreenshot(image, references)
-          if (reading.error) {
-            update({ status: 'error', message: reading.error, reading })
-          } else {
-            const known = reading.cards.filter((card) => card.itemId !== null).length
-            update({ status: 'done', message: `${known} 件を読み取り`, reading })
-          }
-        } catch (error) {
-          update({ status: 'error', message: error instanceof Error ? error.message : String(error) })
-        }
-      })
-    })
-  }, [items])
-
-  useEffect(() => {
-    // StrictMode で effect が 2 回走っても、最初の画像を二重に読まないようにする
-    if (startedRef.current) return
-    startedRef.current = true
-    addFiles(initialFilesRef.current)
-  }, [addFiles])
-
-  // プレビュー用の URL は閉じたときに解放する。
-  // StrictMode の仮のアンマウントでは解放しないよう、次のタスクで生きているか確かめる。
-  useEffect(() => {
-    aliveRef.current = true
-    const urls = previewUrlsRef.current
-    return () => {
-      aliveRef.current = false
-      setTimeout(() => {
-        if (!aliveRef.current) urls.forEach((url) => URL.revokeObjectURL(url))
-      }, 0)
-    }
-  }, [])
-
-  useEffect(() => {
-    const handlePaste = (event: ClipboardEvent) => {
-      const files = imageFilesFrom(event.clipboardData?.items)
-      if (files.length) {
-        event.preventDefault()
-        addFiles(files)
-      }
-    }
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('paste', handlePaste)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      window.removeEventListener('paste', handlePaste)
-      window.removeEventListener('keydown', handleKey)
-    }
-  }, [addFiles, onClose])
-
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
-    event.preventDefault()
-    setDragging(false)
-    addFiles(imageFilesFrom(event.dataTransfer.files))
-  }
-
-  const busy = shots.some((shot) => shot.status === 'waiting' || shot.status === 'reading')
   const updates = [
     ...resultRows.flatMap((reading) => {
       const row = rowFor(reading.itemId, reading.quantity, reading.confident)
@@ -219,63 +125,15 @@ export function ScreenshotImportModal({ items, initialFiles, onApply, onClose }:
           <button aria-label="閉じる" className="modal-close-button" type="button" onClick={onClose}>×</button>
         </div>
 
-        <div
-          className={`screenshot-drop${shots.length ? '' : ' is-empty'}${dragging ? ' is-dragging' : ''}`}
-          onDragLeave={() => setDragging(false)}
-          onDragOver={(event) => {
-            event.preventDefault()
-            setDragging(true)
-          }}
-          onDrop={handleDrop}
-        >
-          {shots.length ? (
-            <>
-              {shots.map((shot) => (
-                <figure key={shot.id} className={`screenshot-shot is-${shot.status}`} title={shot.name}>
-                  <img alt={shot.name} src={shot.previewUrl} />
-                  <figcaption>
-                    {shot.status === 'waiting' ? '待機中' : shot.status === 'reading' ? '読み取り中…' : shot.message}
-                  </figcaption>
-                </figure>
-              ))}
-              <button className="screenshot-add" type="button" onClick={() => fileInputRef.current?.click()}>
-                <strong>＋ 画像を追加</strong>
-                <span>ドロップ / <kbd>Ctrl</kbd>+<kbd>V</kbd> でも追加できます</span>
-              </button>
-            </>
-          ) : (
-            <div className="screenshot-empty">
-              <svg aria-hidden="true" className="screenshot-empty-icon" fill="none" viewBox="0 0 48 48">
-                <rect height="30" rx="5" stroke="currentColor" strokeWidth="2.5" width="40" x="4" y="9" />
-                <path d="M4 32l11-10 9 8 6-5 14 11" stroke="currentColor" strokeLinejoin="round" strokeWidth="2.5" />
-                <circle cx="33" cy="18" fill="currentColor" r="3" />
-              </svg>
-              <strong>スクショをここにドロップ</strong>
-              <p>
-                <kbd>Ctrl</kbd>+<kbd>V</kbd> で貼り付けることもできます。複数枚まとめて入れられます。
-              </p>
-              <button className="btn btn-primary" type="button" onClick={() => fileInputRef.current?.click()}>
-                画像を選択
-              </button>
-              <ul className="screenshot-empty-tips">
-                <li>並び替えは「デフォルト」のまま</li>
-                <li>一覧の先頭から末尾まで、前の画像と重なるようにスクロール</li>
-                <li>写っていない贈り物は所持数 0 として扱います</li>
-              </ul>
-            </div>
-          )}
-          <input
-            ref={fileInputRef}
-            accept="image/*"
-            hidden
-            multiple
-            type="file"
-            onChange={(event) => {
-              addFiles(imageFilesFrom(event.target.files))
-              event.target.value = ''
-            }}
-          />
-        </div>
+        <ScreenshotDropZone
+          shots={shots}
+          tips={[
+            '並び替えは「デフォルト」のまま',
+            '一覧の先頭から末尾まで、前の画像と重なるようにスクロール',
+            '写っていない贈り物は所持数 0 として扱います',
+          ]}
+          onFiles={addFiles}
+        />
 
         {resultRows.length || inference ? (
           <div className="screenshot-results">
