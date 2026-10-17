@@ -1,16 +1,19 @@
 import { memo } from 'react'
 import type { Item } from '../../types'
 import { IconThumb } from '../common/IconThumb'
+import { QuantityField } from './QuantityField'
 
 type InventoryItemRowProps = {
   item: Item
   quantityInput: string
   onQuantityChange: (itemId: number, value: string) => void
   onQuantityCommit: (itemId: number) => void
+  onQuantityRevert: (itemId: number) => void
+  onQuantityPasteList: (itemId: number, values: number[]) => void
 }
 
 function isBouquetItem(item: Pick<Item, 'gift_kind' | 'name'>): boolean {
-  return item.gift_kind === 'bouquet' || item.name.includes('\u82b1\u675f')
+  return item.gift_kind === 'bouquet' || item.name.includes('花束')
 }
 
 function InventoryItemRowComponent({
@@ -18,6 +21,8 @@ function InventoryItemRowComponent({
   quantityInput,
   onQuantityChange,
   onQuantityCommit,
+  onQuantityRevert,
+  onQuantityPasteList,
 }: InventoryItemRowProps) {
   const toneClass = isBouquetItem(item)
     ? 'bouquet'
@@ -31,25 +36,14 @@ function InventoryItemRowComponent({
         <IconThumb filePath={item.icon_path} label={item.name} size={60} tone="gift" />
       </div>
 
-      <input
-        aria-label={`${item.name} の所持数`}
-        className="text-input compact inventory-tile-input"
-        inputMode="numeric"
-        type="text"
+      <QuantityField
+        ariaLabel={`${item.name} の所持数`}
+        savedQuantity={Number(item.quantity || 0)}
         value={quantityInput}
-        onFocus={() => {
-          if (quantityInput === '0') {
-            onQuantityChange(item.id, '')
-          }
-        }}
-        onBlur={() => onQuantityCommit(item.id)}
-        onChange={(event) => onQuantityChange(item.id, event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            onQuantityCommit(item.id)
-          }
-        }}
+        onChange={(value) => onQuantityChange(item.id, value)}
+        onCommit={() => onQuantityCommit(item.id)}
+        onPasteList={(values) => onQuantityPasteList(item.id, values)}
+        onRevert={() => onQuantityRevert(item.id)}
       />
     </div>
   )
@@ -62,6 +56,7 @@ function areEqual(prev: InventoryItemRowProps, next: InventoryItemRowProps): boo
     prev.item.icon_path === next.item.icon_path &&
     prev.item.rarity === next.item.rarity &&
     prev.item.gift_kind === next.item.gift_kind &&
+    prev.item.quantity === next.item.quantity &&
     prev.quantityInput === next.quantityInput
   )
 }

@@ -1,6 +1,7 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { InventoryEditor } from '../components/optimize/InventoryEditor'
+import { resolveQuantityInput } from '../lib/quantityInput'
 import type { Item } from '../types'
 
 type GiftManagementScreenProps = {
@@ -44,6 +45,7 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
   const [items, setItems] = useState<Item[]>([])
   const [itemInputs, setItemInputs] = useState<Record<number, string>>({})
   const [resourceInputs, setResourceInputs] = useState({ box: '0', stone: '0' })
+  const [savedResourceQuantities, setSavedResourceQuantities] = useState({ box: 0, stone: 0 })
 
   const itemsRef = useRef<Item[]>([])
   const itemInputsRef = useRef<Record<number, string>>({})
@@ -55,6 +57,11 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
   function setResourceState(key: ResourceKey, value: string) {
     resourceInputsRef.current = { ...resourceInputsRef.current, [key]: value }
     setResourceInputs(resourceInputsRef.current)
+  }
+
+  function setSavedResourceQuantity(key: ResourceKey, quantity: number) {
+    savedResourceQuantitiesRef.current = { ...savedResourceQuantitiesRef.current, [key]: quantity }
+    setSavedResourceQuantities(savedResourceQuantitiesRef.current)
   }
 
   function replaceItems(nextItems: Item[]) {
@@ -119,7 +126,8 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
       replaceItemInputs(nextInputs)
       setResourceState('box', nextBoxQuantity)
       setResourceState('stone', nextStoneQuantity)
-      savedResourceQuantitiesRef.current = { box: Number(nextBoxQuantity), stone: Number(nextStoneQuantity) }
+      setSavedResourceQuantity('box', Number(nextBoxQuantity))
+      setSavedResourceQuantity('stone', Number(nextStoneQuantity))
     }
 
     void load()
@@ -131,11 +139,11 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
 
   function queueItemSave(itemId: number) {
     const raw = itemInputsRef.current[itemId] ?? '0'
-    const quantity = Number.parseInt(raw || '0', 10)
-    if (Number.isNaN(quantity) || quantity < 0) {
-      window.alert('数量は0以上の整数で入力してください。')
-      const fallback = String(itemsRef.current.find((item) => item.id === itemId)?.quantity ?? 0)
-      updateItemInputs((current) => ({ ...current, [itemId]: fallback }))
+    const savedQuantity = Number(itemsRef.current.find((item) => item.id === itemId)?.quantity ?? 0)
+    const quantity = resolveQuantityInput(raw, savedQuantity)
+    if (quantity === null) {
+      window.alert('数量は0以上の整数で入力してください。「+3」「-2」で今の数から増減できます。')
+      updateItemInputs((current) => ({ ...current, [itemId]: String(savedQuantity) }))
       return
     }
 
@@ -166,16 +174,18 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
   }
 
   function queueResourceSave(key: ResourceKey) {
-    const raw = resourceInputsRef.current[key].trim() || '0'
-    const quantity = Number(raw)
-    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(quantity)) {
-      window.alert(`${RESOURCE_NAMES[key]}在庫は0以上の整数で入力してください。`)
+    const raw = resourceInputsRef.current[key]
+    const quantity = resolveQuantityInput(raw, savedResourceQuantitiesRef.current[key])
+    if (quantity === null) {
+      window.alert(`${RESOURCE_NAMES[key]}在庫は0以上の整数で入力してください。「+3」「-2」で今の数から増減できます。`)
       setResourceState(key, String(savedResourceQuantitiesRef.current[key]))
       return
     }
 
     const normalized = String(quantity)
     setResourceState(key, normalized)
+    // 次の「+3」などがこの値を基準にできるよう、保存完了を待たずに反映する
+    setSavedResourceQuantity(key, quantity)
 
     const previous = resourceSaveQueuesRef.current[key] ?? Promise.resolve()
     const queued = previous
@@ -187,7 +197,6 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
           } else {
             await api.set_crafting_material_quantity(ADVANCED_TAYLOR_STONE_KEY, quantity)
           }
-          savedResourceQuantitiesRef.current[key] = quantity
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           window.alert(`保存に失敗しました: ${message}`)
@@ -202,11 +211,46 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
     })
   }
 
+  function revertItemInput(itemId: number) {
+    const savedQuantity = itemsRef.current.find((item) => item.id === itemId)?.quantity ?? 0
+    updateItemInputs((current) => ({ ...current, [itemId]: String(savedQuantity) }))
+  }
+
+  function revertResourceInput(key: ResourceKey) {
+    setResourceState(key, String(savedResourceQuantitiesRef.current[key]))
+  }
+
+  // 複数の数値が貼り付けられたら、そのタイルから並び順に入力して保存する
+  function applyPastedQuantities(startItemId: number, values: number[]) {
+    const order = itemsRef.current
+    const startIndex = order.findIndex((item) => item.id === startItemId)
+    if (startIndex < 0) {
+      return
+    }
+    const targets = order.slice(startIndex, startIndex + values.length)
+    updateItemInputs((current) => {
+      const next = { ...current }
+      targets.forEach((item, index) => {
+        next[item.id] = String(values[index])
+      })
+      return next
+    })
+    for (const item of targets) {
+      queueItemSave(item.id)
+    }
+    const ignored = values.length - targets.length
+    if (ignored > 0) {
+      window.alert(`${targets.length} 件を入力しました。末尾の ${ignored} 件は対応するタイルが無いため無視しました。`)
+    }
+  }
+
   return (
     <div className="screen-stack gift-management-screen">
       <InventoryEditor
         boxQuantity={resourceInputs.box}
         stoneQuantity={resourceInputs.stone}
+        savedBoxQuantity={savedResourceQuantities.box}
+        savedStoneQuantity={savedResourceQuantities.stone}
         items={items}
         quantityInputs={itemInputs}
         onBoxQuantityChange={(value) => setResourceState('box', value)}
@@ -217,6 +261,10 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
         onSaveBoxQuantity={() => queueResourceSave('box')}
         onSaveStoneQuantity={() => queueResourceSave('stone')}
         onSaveItemQuantity={queueItemSave}
+        onRevertBoxQuantity={() => revertResourceInput('box')}
+        onRevertStoneQuantity={() => revertResourceInput('stone')}
+        onRevertItemQuantity={revertItemInput}
+        onPasteItemQuantities={applyPastedQuantities}
       />
     </div>
   )

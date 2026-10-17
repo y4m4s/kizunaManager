@@ -1,11 +1,15 @@
+import { QuantityField } from './QuantityField'
+
 type InventoryResourceTileProps = {
   name: string
   description: string
   iconUrl: string
   quantity: string
+  savedQuantity: number
   span: number
   onChange: (value: string) => void
   onCommit: () => void
+  onRevert: () => void
 }
 
 export function InventoryResourceTile({
@@ -13,9 +17,11 @@ export function InventoryResourceTile({
   description,
   iconUrl,
   quantity,
+  savedQuantity,
   span,
   onChange,
   onCommit,
+  onRevert,
 }: InventoryResourceTileProps) {
   return (
     <div
@@ -36,25 +42,13 @@ export function InventoryResourceTile({
         </div>
       </div>
 
-      <input
-        aria-label={`${name}在庫`}
-        className="text-input compact inventory-tile-input"
-        inputMode="numeric"
-        type="text"
+      <QuantityField
+        ariaLabel={`${name}在庫`}
+        savedQuantity={savedQuantity}
         value={quantity}
-        onFocus={() => {
-          if (quantity === '0') {
-            onChange('')
-          }
-        }}
-        onBlur={onCommit}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            onCommit()
-          }
-        }}
+        onChange={onChange}
+        onCommit={onCommit}
+        onRevert={onRevert}
       />
     </div>
   )

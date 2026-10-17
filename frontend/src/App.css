@@ -1208,6 +1208,65 @@
   text-align: center;
 }
 
+.quantity-field {
+  min-width: 0;
+  position: relative;
+}
+
+.quantity-field .inventory-tile-input {
+  width: 100%;
+}
+
+.inventory-tile-input.is-invalid {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+}
+
+.quantity-field-preview {
+  background: #13314e;
+  border-radius: 999px;
+  bottom: calc(100% + 4px);
+  color: #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  left: 50%;
+  line-height: 1;
+  padding: 4px 8px;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.quantity-field-preview.is-invalid {
+  background: #dc2626;
+}
+
+.quantity-help {
+  color: #617691;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  gap: 4px 14px;
+  line-height: 1.5;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.quantity-help kbd,
+.quantity-help code {
+  background: #eef3fa;
+  border: 1px solid #d3deec;
+  border-radius: 4px;
+  color: #27415f;
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 0 4px;
+}
+
 .inventory-box-tile-card {
   align-self: start;
   display: grid;
