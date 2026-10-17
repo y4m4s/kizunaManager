@@ -21,6 +21,7 @@ type InventoryEditorProps = {
   onRevertStoneQuantity: () => void
   onRevertItemQuantity: (itemId: number) => void
   onPasteItemQuantities: (itemId: number, values: number[]) => void
+  onOpenScreenshotImport: () => void
 }
 
 export function InventoryEditor({
@@ -40,6 +41,7 @@ export function InventoryEditor({
   onRevertStoneQuantity,
   onRevertItemQuantity,
   onPasteItemQuantities,
+  onOpenScreenshotImport,
 }: InventoryEditorProps) {
   return (
     <section className="card-shell search-section">
@@ -55,6 +57,9 @@ export function InventoryEditor({
             <li>改行やタブ区切りの数値を貼り付けると、そのタイルから順に入力</li>
           </ul>
         </div>
+        <button className="btn screenshot-import-button" type="button" onClick={onOpenScreenshotImport}>
+          スクショから取り込み
+        </button>
       </div>
 
       <div className="inventory-grid" data-quantity-grid="">

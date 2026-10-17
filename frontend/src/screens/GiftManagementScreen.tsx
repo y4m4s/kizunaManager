@@ -1,6 +1,8 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { InventoryEditor } from '../components/optimize/InventoryEditor'
+import { ScreenshotImportModal } from '../components/optimize/ScreenshotImportModal'
+import { imageFilesFrom } from '../lib/screenshotImport/files'
 import { resolveQuantityInput } from '../lib/quantityInput'
 import type { Item } from '../types'
 
@@ -46,6 +48,8 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
   const [itemInputs, setItemInputs] = useState<Record<number, string>>({})
   const [resourceInputs, setResourceInputs] = useState({ box: '0', stone: '0' })
   const [savedResourceQuantities, setSavedResourceQuantities] = useState({ box: 0, stone: 0 })
+  // スクショ取り込みダイアログ (null なら閉じている)
+  const [importFiles, setImportFiles] = useState<File[] | null>(null)
 
   const itemsRef = useRef<Item[]>([])
   const itemInputsRef = useRef<Record<number, string>>({})
@@ -211,6 +215,30 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
     })
   }
 
+  // ダイアログが閉じているときに画像が貼り付けられたら、取り込みを始める
+  useEffect(() => {
+    if (importFiles !== null) return
+    const handlePaste = (event: ClipboardEvent) => {
+      const files = imageFilesFrom(event.clipboardData?.items)
+      if (files.length) {
+        event.preventDefault()
+        setImportFiles(files)
+      }
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [importFiles])
+
+  function applyImportedQuantities(updates: Array<{ itemId: number; quantity: number }>) {
+    updateItemInputs((current) => {
+      const next = { ...current }
+      for (const update of updates) next[update.itemId] = String(update.quantity)
+      return next
+    })
+    for (const update of updates) queueItemSave(update.itemId)
+    setImportFiles(null)
+  }
+
   function revertItemInput(itemId: number) {
     const savedQuantity = itemsRef.current.find((item) => item.id === itemId)?.quantity ?? 0
     updateItemInputs((current) => ({ ...current, [itemId]: String(savedQuantity) }))
@@ -245,8 +273,22 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
   }
 
   return (
-    <div className="screen-stack gift-management-screen">
+    <div
+      className="screen-stack gift-management-screen"
+      onDragOver={(event) => {
+        if (importFiles === null && [...event.dataTransfer.types].includes('Files')) event.preventDefault()
+      }}
+      onDrop={(event) => {
+        if (importFiles !== null) return
+        const files = imageFilesFrom(event.dataTransfer.files)
+        if (files.length) {
+          event.preventDefault()
+          setImportFiles(files)
+        }
+      }}
+    >
       <InventoryEditor
+        onOpenScreenshotImport={() => setImportFiles([])}
         boxQuantity={resourceInputs.box}
         stoneQuantity={resourceInputs.stone}
         savedBoxQuantity={savedResourceQuantities.box}
@@ -266,6 +308,14 @@ export function GiftManagementScreen({ bridgeReady, refreshToken }: GiftManageme
         onRevertItemQuantity={revertItemInput}
         onPasteItemQuantities={applyPastedQuantities}
       />
+      {importFiles !== null ? (
+        <ScreenshotImportModal
+          initialFiles={importFiles}
+          items={items}
+          onApply={applyImportedQuantities}
+          onClose={() => setImportFiles(null)}
+        />
+      ) : null}
     </div>
   )
 }
