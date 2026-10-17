@@ -56,7 +56,7 @@ function componentBitmap(component: Component): { bitmap: Uint8Array; width: num
 }
 
 // 縮小後の 1 マスに入る元画素の平均 (見本の作成と同じ方法)
-export function boxResize(bitmap: Uint8Array, width: number, height: number): Float32Array {
+function boxResize(bitmap: Uint8Array, width: number, height: number): Float32Array {
   const out = new Float32Array(DIGIT_GLYPH_WIDTH * DIGIT_GLYPH_HEIGHT)
   for (let j = 0; j < DIGIT_GLYPH_HEIGHT; j += 1) {
     const y0 = Math.floor((j * height) / DIGIT_GLYPH_HEIGHT)
@@ -74,7 +74,7 @@ export function boxResize(bitmap: Uint8Array, width: number, height: number): Fl
   return out
 }
 
-export function countHoles(bitmap: Uint8Array, width: number, height: number): number {
+function countHoles(bitmap: Uint8Array, width: number, height: number): number {
   const paddedWidth = width + 2
   const paddedHeight = height + 2
   const filled = new Uint8Array(paddedWidth * paddedHeight)

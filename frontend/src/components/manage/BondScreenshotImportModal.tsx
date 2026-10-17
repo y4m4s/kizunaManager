@@ -57,6 +57,7 @@ export function BondScreenshotImportModal({ students, initialFiles, onApply, onC
   const read = useCallback(async (
     file: File,
     progress: (message: string) => void,
+    signal: AbortSignal,
   ): Promise<ShotResult<StudentScreenshotReading>> => {
     if (!sourcesRef.current) {
       progress('生徒アイコンを準備中…')
@@ -70,10 +71,12 @@ export function BondScreenshotImportModal({ students, initialFiles, onApply, onC
       sources,
       scaledIconRef.current,
       (done, total) => progress(`読み取り中… ${done}/${total}`),
+      signal,
     )
     if (reading.error) return { reading, message: reading.error, error: true }
     const known = reading.cards.filter((card) => card.studentId !== null).length
-    return { reading, message: `${known} 人を読み取り` }
+    const unknown = reading.cards.length - known
+    return { reading, message: `${known} 人を読み取り${unknown ? ` (${unknown} 枚は判定できず)` : ''}` }
   }, [students])
   const { shots, addFiles, busy } = useScreenshotQueue({ initialFiles, read, onClose })
 

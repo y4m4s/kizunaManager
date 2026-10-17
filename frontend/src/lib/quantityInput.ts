@@ -14,7 +14,7 @@ const FULL_WIDTH_MAP: Record<string, string> = {
   '\u3000': ' ',
 }
 
-export function normalizeQuantityText(raw: string): string {
+function normalizeQuantityText(raw: string): string {
   return raw
     .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
     .replace(/[＋－ー−\u3000]/g, (char) => FULL_WIDTH_MAP[char] ?? char)

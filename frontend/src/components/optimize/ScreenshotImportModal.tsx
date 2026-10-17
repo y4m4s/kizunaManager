@@ -60,7 +60,8 @@ export function ScreenshotImportModal({ items, initialFiles, onApply, onClose }:
     const reading = readScreenshot(image, references)
     if (reading.error) return { reading, message: reading.error, error: true }
     const known = reading.cards.filter((card) => card.itemId !== null).length
-    return { reading, message: `${known} 件を読み取り` }
+    const unknown = reading.cards.length - known
+    return { reading, message: `${known} 件を読み取り${unknown ? ` (${unknown} 枚は判定できず)` : ''}` }
   }, [targetItems])
   const { shots, addFiles, busy } = useScreenshotQueue({ initialFiles, read, onClose })
 
@@ -80,7 +81,7 @@ export function ScreenshotImportModal({ items, initialFiles, onApply, onClose }:
     // 撮れている範囲で写っていない贈り物は 0。今 0 のものは変化が無いので出さない。
     const zeros = (inference?.certainZero ?? [])
       .filter((itemId) => Number(itemsById.get(itemId)?.quantity || 0) > 0)
-      .map((itemId) => ({ itemId, quantity: 0, confident: true, candidates: [0], note: '', inferred: true }))
+      .map((itemId) => ({ itemId, quantity: 0, confident: true, note: '', inferred: true }))
     return [...read, ...zeros]
       .sort((a, b) => (itemOrder.get(a.itemId) ?? 0) - (itemOrder.get(b.itemId) ?? 0))
   }, [readings, inference, itemsById, itemOrder])
@@ -149,7 +150,7 @@ export function ScreenshotImportModal({ items, initialFiles, onApply, onClose }:
             ) : inference?.warnings.length ? (
               <div className="screenshot-coverage is-partial">
                 {inference.warnings.map((warning) => <p key={warning}>{warning}</p>)}
-                <p>撮れている範囲で写っていない贈り物だけを 0 にします。</p>
+                {inference.certainZero.length ? <p>撮れている範囲で写っていない贈り物だけを 0 にします。</p> : null}
               </div>
             ) : null}
             <table className="screenshot-table">

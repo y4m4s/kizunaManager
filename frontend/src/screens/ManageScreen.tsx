@@ -628,9 +628,14 @@ export function ManageScreen({
   // ランクが変わった生徒は、手入力と同じくそのランクの経験値を 0 から数える。
   async function applyBondImport(updates: BondImportUpdate[]) {
     setImportFiles(null)
+    // 手入力の保存待ち (目標や優先度の変更も含む) を先に済ませる。
+    // 後から走って、取り込んだ絆ランクを古い値で上書きしないようにするため。
+    await saveDirtyRowsNow(false)
+    for (const update of updates) clearSaveTimer(update.studentId)
     let saved = 0
     let failed = 0
     for (const update of updates) {
+      await saveQueueRef.current[update.studentId]?.catch(() => undefined)
       const student = studentsRef.current.find((row) => row.id === update.studentId)
       if (!student) continue
       const level = clampLevel(update.level)

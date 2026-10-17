@@ -172,6 +172,20 @@ function createWindow() {
     return { action: 'deny' }
   })
 
+  // 画像ファイルをウィンドウに落としたときなどに、アプリの画面からその画像へ移動してしまわないようにする。
+  // アプリ外のリンクはブラウザで開く。(loadURL による読み込みはこのイベントの対象外)
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault()
+    try {
+      const { protocol, hostname } = new URL(url)
+      if ((protocol === 'http:' || protocol === 'https:') && hostname !== '127.0.0.1' && hostname !== 'localhost') {
+        shell.openExternal(url)
+      }
+    } catch {
+      // URL として解釈できないものは無視する
+    }
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })

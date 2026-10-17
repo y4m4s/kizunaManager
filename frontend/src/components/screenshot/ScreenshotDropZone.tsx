@@ -22,7 +22,9 @@ export function ScreenshotDropZone({ shots, tips, onFiles }: ScreenshotDropZoneP
         setDragging(true)
       }}
       onDrop={(event) => {
+        // ダイアログ全体の受け付け (useScreenshotQueue) と二重に取り込まないよう、ここで止める
         event.preventDefault()
+        event.stopPropagation()
         setDragging(false)
         onFiles(imageFilesFrom(event.dataTransfer.files))
       }}

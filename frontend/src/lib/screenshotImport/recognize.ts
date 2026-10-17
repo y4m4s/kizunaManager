@@ -33,6 +33,7 @@ const NUMBER_AREA_LEFT = 40
 // リスト右端のスクロールバー。つまみが上端・下端にあれば、一覧の先頭・末尾が写っている
 const SCROLLBAR_X = 1864
 const SCROLLBAR_THUMB_COLOR = [133, 151, 165]
+const SCROLLBAR_TRACK_COLOR = [177, 191, 202]
 const SCROLLBAR_TRACK_TOP = 237
 const SCROLLBAR_TRACK_BOTTOM = 906
 const SCROLLBAR_EDGE_TOLERANCE = 4
@@ -62,7 +63,8 @@ export type CardReading = {
   itemId: number | null
   quantity: number | null
   confident: boolean
-  iconError: number
+  // アイテムの特定に自信があるか (数字の読みとは別)
+  iconConfident: boolean
   note: string
 }
 
@@ -86,7 +88,7 @@ function columnX(column: number): number {
 }
 
 // カード間の隙間 (幅 3〜9px の灰色の帯) から、完全に見えているカードの上端 y を求める
-export function findCardTops(image: RgbaImage): number[] {
+function findCardTops(image: RgbaImage): number[] {
   const left = columnX(0)
   const right = columnX(COLUMN_COUNT - 1) + CARD_SIZE
   const isGapRow: boolean[] = []
@@ -200,21 +202,30 @@ function readQuantity(image: RgbaImage, left: number, top: number): { quantity: 
   return { quantity: Number(text), confident }
 }
 
-export function readScrollPosition(image: RgbaImage): { atTop: boolean; atEnd: boolean } {
+function colorDistance(data: Uint8ClampedArray, offset: number, color: number[]): number {
+  return Math.abs(data[offset] - color[0]) +
+    Math.abs(data[offset + 1] - color[1]) +
+    Math.abs(data[offset + 2] - color[2])
+}
+
+function readScrollPosition(image: RgbaImage): { atTop: boolean; atEnd: boolean } {
   let first = -1
   let last = -1
+  let trackFound = false
   for (let y = SCROLLBAR_TRACK_TOP - 10; y <= SCROLLBAR_TRACK_BOTTOM + 10; y += 1) {
     const o = (y * image.width + SCROLLBAR_X) * 4
-    const diff = Math.abs(image.data[o] - SCROLLBAR_THUMB_COLOR[0]) +
-      Math.abs(image.data[o + 1] - SCROLLBAR_THUMB_COLOR[1]) +
-      Math.abs(image.data[o + 2] - SCROLLBAR_THUMB_COLOR[2])
-    if (diff < 25) {
+    if (colorDistance(image.data, o, SCROLLBAR_THUMB_COLOR) < 25) {
       if (first < 0) first = y
       last = y
+    } else if (colorDistance(image.data, o, SCROLLBAR_TRACK_COLOR) < 15) {
+      trackFound = true
     }
   }
-  // つまみが無い = スクロールしなくても全部見えている
-  if (first < 0) return { atTop: true, atEnd: true }
+  if (first < 0) {
+    // つまみもレールも無い = スクロールしなくても全部見えている。
+    // レールだけ見えてつまみが見つからないときは、位置が分からないので撮れていない扱いにする。
+    return trackFound ? { atTop: false, atEnd: false } : { atTop: true, atEnd: true }
+  }
   return {
     atTop: first <= SCROLLBAR_TRACK_TOP + SCROLLBAR_EDGE_TOLERANCE,
     atEnd: last >= SCROLLBAR_TRACK_BOTTOM - SCROLLBAR_EDGE_TOLERANCE,
@@ -253,7 +264,7 @@ export function readScreenshot(image: RgbaImage, icons: IconReference[]): Screen
       const iconOk = best.error <= ICON_MAX_ERROR && second / best.error >= ICON_MIN_RATIO
       if (best.error > ICON_MAX_ERROR * 1.6) {
         // 贈り物以外のアイテムなど、知らないアイコンは読み飛ばす
-        cards.push({ itemId: null, quantity: null, confident: false, iconError: best.error, note: '不明なアイテム' })
+        cards.push({ itemId: null, quantity: null, confident: false, iconConfident: false, note: '不明なアイテム' })
         continue
       }
       const { quantity, confident } = readQuantity(image, left, top)
@@ -261,7 +272,7 @@ export function readScreenshot(image: RgbaImage, icons: IconReference[]): Screen
         itemId: best.itemId,
         quantity,
         confident: iconOk && confident && quantity !== null,
-        iconError: best.error,
+        iconConfident: iconOk,
         note: quantity === null
           ? '数が読めません'
           : !iconOk
@@ -279,7 +290,6 @@ export type MergedReading = {
   itemId: number
   quantity: number | null
   confident: boolean
-  candidates: number[]
   note: string
 }
 
@@ -301,13 +311,12 @@ export function mergeReadings(readings: ScreenshotReading[]): MergedReading[] {
       cards.filter((card) => card.confident).map((card) => card.quantity as number),
     )]
     if (confidentValues.length === 1 && values.length === 1) {
-      merged.push({ itemId, quantity: confidentValues[0], confident: true, candidates: values, note: '' })
+      merged.push({ itemId, quantity: confidentValues[0], confident: true, note: '' })
     } else if (values.length > 1) {
       merged.push({
         itemId,
         quantity: confidentValues[0] ?? values[0],
         confident: false,
-        candidates: values,
         note: `スクショ間で読みが違います (${values.join(' / ')})`,
       })
     } else {
@@ -315,7 +324,6 @@ export function mergeReadings(readings: ScreenshotReading[]): MergedReading[] {
         itemId,
         quantity: values[0] ?? null,
         confident: false,
-        candidates: values,
         note: cards.find((card) => card.note)?.note ?? '要確認',
       })
     }
@@ -342,14 +350,32 @@ export function inferZeroItems(readings: ScreenshotReading[], orderedItemIds: nu
   const indexOf = new Map(orderedItemIds.map((itemId, index) => [itemId, index]))
   const seen = new Set<number>()
   const intervals: Array<[number, number]> = []
+  // 判定できなかった (または自信のない) カードが入りうる範囲。中の未検出アイテムは 0 と言い切れない
+  const unsureRanges: Array<[number, number]> = []
   let orderOk = true
 
   for (const reading of readings) {
     if (reading.error) continue
-    const indexes = reading.cards
-      .map((card) => (card.itemId === null ? undefined : indexOf.get(card.itemId)))
-      .filter((index): index is number => index !== undefined)
-    indexes.forEach((index) => seen.add(orderedItemIds[index]))
+    const indexes: number[] = []
+    let pendingUnsure = false
+    let lastSureIndex = -1
+    for (const card of reading.cards) {
+      const index = card.itemId === null ? undefined : indexOf.get(card.itemId)
+      if (index !== undefined) {
+        seen.add(orderedItemIds[index])
+        indexes.push(index)
+      }
+      if (index === undefined || !card.iconConfident) {
+        pendingUnsure = true
+        continue
+      }
+      if (pendingUnsure) {
+        unsureRanges.push([lastSureIndex + 1, index - 1])
+        pendingUnsure = false
+      }
+      lastSureIndex = index
+    }
+    if (pendingUnsure) unsureRanges.push([lastSureIndex + 1, orderedItemIds.length - 1])
     for (let i = 1; i < indexes.length; i += 1) {
       if (indexes[i] <= indexes[i - 1]) orderOk = false
     }
@@ -365,7 +391,10 @@ export function inferZeroItems(readings: ScreenshotReading[], orderedItemIds: nu
       certainZero: [],
       uncertain: unseen,
       complete: false,
-      warnings: ['並び順がアイテム ID 順になっていません。ゲームの並び替えを「デフォルト」にして撮ってください。'],
+      warnings: [
+        '並び順がアイテム ID 順になっていないため、写っていない贈り物は 0 にしていません。',
+        'ゲームの並び替えが「デフォルト」か確かめてください。判定を誤ったカードがある場合も、この表示になります。',
+      ],
     }
   }
 
@@ -378,15 +407,25 @@ export function inferZeroItems(readings: ScreenshotReading[], orderedItemIds: nu
     else merged.push([start, end])
   }
   const covered = (index: number) => merged.some(([start, end]) => index >= start && index <= end)
+  const unsure = (index: number) => unsureRanges.some(([start, end]) => index >= start && index <= end)
 
   const certainZero: number[] = []
   const uncertain: number[] = []
+  let protectedCount = 0
   for (const itemId of unseen) {
-    if (covered(indexOf.get(itemId) as number)) certainZero.push(itemId)
-    else uncertain.push(itemId)
+    const index = indexOf.get(itemId) as number
+    if (covered(index) && !unsure(index)) {
+      certainZero.push(itemId)
+    } else {
+      uncertain.push(itemId)
+      if (covered(index)) protectedCount += 1
+    }
   }
 
   const warnings: string[] = []
+  if (protectedCount) {
+    warnings.push('判定できなかったカードがあるため、その近くの写っていない贈り物は 0 にしていません。')
+  }
   if (merged.length) {
     if (merged[0][0] > 0) warnings.push('一覧の先頭 (スクロールバーが一番上) が写っていません。')
     if (merged[merged.length - 1][1] < orderedItemIds.length - 1) warnings.push('一覧の末尾 (スクロールバーが一番下) が写っていません。')

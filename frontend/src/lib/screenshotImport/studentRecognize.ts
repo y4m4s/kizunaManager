@@ -20,19 +20,19 @@ const ROW_PITCH = 402
 const VIEW_TOP = 262
 const VIEW_BOTTOM = 1031
 // カード下の帯の始まり (アンカー) から見た、カードの絵の位置
-export const CARD_IMAGE_WIDTH = 265
-export const CARD_IMAGE_HEIGHT = 296
+const CARD_IMAGE_WIDTH = 265
+const CARD_IMAGE_HEIGHT = 296
 const IMAGE_TOP_FROM_ANCHOR = 306
 // 絵の下部はハートと数字の帯。アイコン照合には帯より上だけ使う
 const ICON_AREA_BOTTOM = 240
 const MIN_VISIBLE_HEIGHT = 120
 
 // アイコンのおおよその収まり方 (粗い比較用)。生徒ごとの差を吸収するため 2 通り試して良い方を採る
-export const COARSE_PLACEMENTS = [
+const COARSE_PLACEMENTS = [
   { size: 223, x: 22, y: 16 },
   { size: 206, x: 30, y: 26 },
 ]
-export const COARSE_STEP = 6
+const COARSE_STEP = 6
 const CANDIDATE_COUNT = 5
 const REFINE_SIZES = [192, 198, 204, 210, 216, 222, 228, 234]
 const REFINE_X = [8, 12, 16, 20, 24, 28, 32, 36, 40]
@@ -123,7 +123,7 @@ function backgroundRatioOfRow(image: RgbaImage, y: number): number {
 }
 
 // カード下端の直下にある背景色の帯 (高さ 8〜16px) の開始 y を、行の間隔に合うものだけ返す
-export function findCardAnchors(image: RgbaImage): number[] {
+function findCardAnchors(image: RgbaImage): number[] {
   const ratios = new Map<number, number>()
   const ratio = (y: number) => {
     let value = ratios.get(y)
@@ -304,6 +304,7 @@ export async function readStudentScreenshot(
   sources: StudentIconSource[],
   scaledIcon: ScaledIconProvider,
   onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<StudentScreenshotReading> {
   if (image.width !== NORMALIZED_WIDTH || image.height !== NORMALIZED_HEIGHT) {
     return { cards: [], error: '画像の大きさが想定と違います。' }
@@ -315,6 +316,8 @@ export async function readStudentScreenshot(
 
   const cards: StudentCardReading[] = []
   for (let index = 0; index < slots.length; index += 1) {
+    // ダイアログが閉じられたら、残りのカードは読まずにやめる
+    signal?.throwIfAborted()
     const slot = slots[index]
     // 1 段目: 決まった位置で全員と粗く比べる
     const coarse = sources
