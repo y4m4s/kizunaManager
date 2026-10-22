@@ -14,8 +14,10 @@ Blue Archive の絆管理をローカルで使うための Web アプリです�
 
 前提:
 
-- Node.js 22.13.0 以上 (Node.js 24 推奨。バックエンドは Node.js 組み込みの SQLite と TypeScript 型除去を使用します)
+- Node.js 24.22.1 (開発・動作確認の基準。対応範囲は 24.22.1 以上の 24.x。バックエンドは Node.js 組み込みの SQLite と TypeScript 型除去を使用します)
 - npm
+
+`.nvmrc` に基準バージョンを指定しています。Node.js のバージョン管理ツールを使う場合も、このバージョンに合わせてください。デスクトップ版の実行時は Electron 内蔵の Node.js を使用します。
 
 依存関係のインストール:
 
