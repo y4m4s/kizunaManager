@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { DEFAULT_FRONTEND_PORT } from '../../shared/ports.ts'
 
 export function authorizeRequest(request: IncomingMessage, response: ServerResponse): boolean {
   const port = request.socket.localPort
@@ -10,8 +11,9 @@ export function authorizeRequest(request: IncomingMessage, response: ServerRespo
   const origin = request.headers.origin
   const allowedOrigins = new Set([...hosts].map((host) => `http://${host}`))
   if (process.env.NODE_ENV !== 'production') {
-    allowedOrigins.add('http://127.0.0.1:5173')
-    allowedOrigins.add('http://localhost:5173')
+    const frontendPort = Number(process.env.FRONTEND_PORT || DEFAULT_FRONTEND_PORT)
+    allowedOrigins.add(`http://127.0.0.1:${frontendPort}`)
+    allowedOrigins.add(`http://localhost:${frontendPort}`)
   }
   if (origin !== undefined && !allowedOrigins.has(origin)) return false
   if (!origin && request.headers['sec-fetch-site'] === 'cross-site') return false

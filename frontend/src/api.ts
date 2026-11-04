@@ -1,3 +1,4 @@
+import { DEFAULT_BACKEND_PORT } from '../../shared/ports.ts'
 import type {
   Item,
   MasterStatus,
@@ -14,7 +15,9 @@ import type {
 // 本番ビルドはバックエンドが同一オリジンで配信するため相対パスを使う(Electron の動的ポートにも対応)
 const API_BASE =
   (import.meta.env.VITE_API_BASE as string | undefined) ??
-  (import.meta.env.DEV ? 'http://127.0.0.1:8787' : '')
+  (import.meta.env.DEV
+    ? (import.meta.env.VITE_DEFAULT_API_BASE as string | undefined) ?? `http://127.0.0.1:${DEFAULT_BACKEND_PORT}`
+    : '')
 
 function joinUrl(pathname: string): string {
   return `${API_BASE}${pathname}`

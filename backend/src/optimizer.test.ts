@@ -386,6 +386,188 @@ test('repairs greedy overshoot with an exact bounded subset', () => {
   assert.equal(result.leftovers.find((leftover) => leftover.item_id === 101)?.quantity, 1)
 })
 
+test('prefers fewer ordinary gifts for equal EXP regardless of item names', () => {
+  for (const names of [['A medium', 'Z large'], ['Z medium', 'A large']]) {
+    const result = optimizeAllocation(
+      [plan(1, 1, 120, 'top_priority')],
+      { 101: 3, 102: 2, 103: 1 },
+      { 1: student(1, ['a', 'b']) },
+      {
+        101: item(101, names[0], 'SR', ['a']),
+        102: item(102, names[1], 'SR', ['a', 'b']),
+        103: item(103, 'Purple', 'SSR', ['a', 'b']),
+      },
+      0, 0, 0, false, false,
+    )
+
+    assert.equal(result.results[0].allocated_exp, 120)
+    assert.equal(result.results[0].remaining_exp, 0)
+    assert.deepEqual(
+      result.results[0].allocated_items.map((allocation) => [allocation.item_id, allocation.count]),
+      [[102, 2]],
+    )
+    assert.equal(result.leftovers.find((leftover) => leftover.item_id === 103)?.quantity, 1)
+  }
+})
+
+test('uses large SR gifts instead of many medium gifts when repairing a large plan', () => {
+  const result = optimizeAllocation(
+    [plan(1, 1, 4160, 'top_priority')],
+    { 101: 102, 102: 98, 103: 40, 104: 74, 105: 176 },
+    { 1: student(1, ['a', 'b']) },
+    {
+      101: item(101, 'A medium', 'SR', ['a']),
+      102: item(102, 'Z large', 'SR', ['a', 'b']),
+      103: item(103, 'Purple', 'SSR', ['a', 'b']),
+      104: item(104, 'B medium', 'SR', ['a']),
+      105: item(105, 'C medium', 'SR', ['a']),
+    },
+    0, 0, 0, false, false,
+  )
+  const row = result.results[0]
+
+  assert.equal(row.allocated_exp, 4160)
+  assert.equal(row.remaining_exp, 0)
+  assert.equal(row.allocated_items.filter((allocation) => allocation.exp_per_item === 40)
+    .reduce((sum, allocation) => sum + allocation.count, 0), 2)
+  assert.equal(row.allocated_items.find((allocation) => allocation.item_id === 102)?.count, 68)
+  assert.equal(row.allocated_items.reduce((sum, allocation) => sum + allocation.count, 0), 70)
+  assert.equal(result.leftovers.find((leftover) => leftover.item_id === 103)?.quantity, 40)
+})
+
+test('reserves rare and universal gifts when ordinary gifts fulfill an exact plan', () => {
+  const reserveGifts: ItemRecord[] = [
+    item(103, 'Purple', 'SSR', ['a', 'b']),
+    { ...item(103, 'Bouquet'), gift_kind: 'bouquet', exp_value: 240 },
+    { ...item(SELECTABLE_BOX_ITEM_ID, 'Box'), gift_kind: 'gift_box' },
+  ]
+  for (const reserveGift of reserveGifts) {
+    const reserveCount = reserveGift.id === SELECTABLE_BOX_ITEM_ID ? 4 : 1
+    const result = optimizeAllocation(
+      [{ ...plan(1, 1, 240, 'top_priority'), target_bond_level: 100 }],
+      { 101: 4, [reserveGift.id]: reserveCount },
+      { 1: student(1, ['a', 'b']) },
+      { 101: item(101, 'Ordinary', 'SR', ['a', 'b']), [reserveGift.id]: reserveGift },
+      0, 0, 0, false, false,
+    )
+
+    assert.equal(result.results[0].allocated_exp, 240)
+    assert.equal(result.results[0].remaining_exp, 0)
+    assert.deepEqual(
+      result.results[0].allocated_items.map((allocation) => [allocation.item_id, allocation.count]),
+      [[101, 4]],
+    )
+    assert.equal(result.leftovers.find((leftover) => leftover.item_id === reserveGift.id)?.quantity, reserveCount)
+  }
+})
+
+test('does not consume saved boxes to match a whole inventory stack during rebalancing', () => {
+  for (const ordinaryCount of [5, 6]) {
+    for (const names of [['A ordinary', 'Z box'], ['Z ordinary', 'A box']]) {
+      const result = optimizeAllocation(
+        [{ ...plan(1, 1, 240, 'top_priority'), target_bond_level: 100 }],
+        { 101: ordinaryCount, [SELECTABLE_BOX_ITEM_ID]: 4 },
+        { 1: student(1, ['a', 'b']) },
+        {
+          101: item(101, names[0], 'SR', ['a', 'b']),
+          [SELECTABLE_BOX_ITEM_ID]: {
+            ...item(SELECTABLE_BOX_ITEM_ID, names[1]), gift_kind: 'gift_box',
+          },
+        },
+        0, 0, 0, false, false,
+      )
+
+      assert.equal(result.results[0].allocated_exp, 240)
+      assert.equal(result.results[0].remaining_exp, 0)
+      assert.deepEqual(
+        result.results[0].allocated_items.map((allocation) => [allocation.item_id, allocation.count]),
+        [[101, 4]],
+      )
+      assert.equal(result.leftovers.find((leftover) => leftover.item_id === 101)?.quantity, ordinaryCount - 4)
+      assert.equal(result.leftovers.find((leftover) => leftover.item_id === SELECTABLE_BOX_ITEM_ID)?.quantity, 4)
+    }
+  }
+})
+
+test('uses boxes to release ordinary gifts needed by semi-priority students', () => {
+  const result = optimizeAllocation(
+    [
+      plan(1, 1, 480, 'semi_priority'),
+      plan(2, 2, 420, 'semi_priority'),
+      { ...plan(3, 3, 460, 'top_priority'), target_bond_level: 100 },
+    ],
+    { 101: 1, 102: 9, [SELECTABLE_BOX_ITEM_ID]: 8 },
+    {
+      1: student(1, ['a', 'b', 'd']),
+      2: student(2, ['c', 'd']),
+      3: student(3, ['a', 'b', 'c', 'd']),
+    },
+    {
+      101: item(101, 'Purple', 'SSR', ['b', 'c', 'd']),
+      102: item(102, 'Ordinary', 'SR', ['a', 'b', 'c', 'd']),
+      [SELECTABLE_BOX_ITEM_ID]: { ...item(SELECTABLE_BOX_ITEM_ID, 'Box'), gift_kind: 'gift_box' },
+    },
+  )
+
+  assert.ok(result.results.every((row) => row.remaining_exp === 0))
+  assert.equal(result.results.find((row) => row.student_id === 3)?.allocated_exp, 480)
+  assert.equal(result.results.find((row) => row.student_id === 2)?.allocated_exp, 420)
+  assert.equal(result.leftovers.find((leftover) => leftover.item_id === SELECTABLE_BOX_ITEM_ID)?.quantity, 2)
+})
+
+test('uses SSR gifts when reserving them would leave the goal incomplete', () => {
+  const result = optimizeAllocation(
+    [plan(1, 1, 240, 'top_priority')],
+    { 101: 3, 102: 1 },
+    { 1: student(1, ['a', 'b']) },
+    { 101: item(101, 'Ordinary', 'SR', ['a', 'b']), 102: item(102, 'Purple', 'SSR', ['a', 'b']) },
+  )
+
+  assert.equal(result.results[0].allocated_exp, 240)
+  assert.equal(result.results[0].remaining_exp, 0)
+  assert.deepEqual(
+    result.results[0].allocated_items.map((allocation) => [allocation.item_id, allocation.count]),
+    [[102, 1]],
+  )
+})
+
+test('does not sacrifice lower priority fulfillment to reserve a higher priority SSR gift', () => {
+  const result = optimizeAllocation(
+    [plan(1, 1, 240, 'top_priority'), plan(2, 2, 160, 'semi_priority')],
+    { 101: 4, 102: 1 },
+    { 1: student(1, ['a', 'b']), 2: student(2, ['a']) },
+    { 101: item(101, 'Ordinary', 'SR', ['a', 'b']), 102: item(102, 'Purple', 'SSR', ['a', 'b']) },
+  )
+
+  assert.ok(result.results.every((row) => row.remaining_exp === 0))
+  assert.equal(
+    result.results.reduce((sum, row) => sum + (row.allocated_items.find((allocation) => allocation.item_id === 102)?.count || 0), 0),
+    1,
+  )
+  assert.deepEqual(result.results.map((row) => row.allocated_exp), [240, 160])
+})
+
+test('keeps bounded stock valid when equal-sum repair paths replace earlier paths', () => {
+  const result = optimizeAllocation(
+    [plan(1, 1, 160, 'top_priority')],
+    { 101: 4, 102: 1, 103: 1 },
+    { 1: student(1, ['a', 'b', 'c']) },
+    {
+      101: item(101, 'A medium', 'SR', ['a']),
+      102: item(102, 'Z extra large', 'SR', ['a', 'b', 'c']),
+      103: item(103, 'ZZ purple', 'SSR', ['a', 'b']),
+    },
+  )
+  const row = result.results[0]
+
+  assert.equal(row.allocated_exp, 160)
+  assert.equal(row.allocated_items.find((allocation) => allocation.item_id === 101)?.count, 2)
+  assert.equal(row.allocated_items.find((allocation) => allocation.item_id === 102)?.count, 1)
+  assert.equal(row.allocated_items.reduce((sum, allocation) => sum + allocation.total_exp, 0), 160)
+  assert.equal(result.leftovers.find((leftover) => leftover.item_id === 101)?.quantity, 2)
+  assert.equal(result.leftovers.find((leftover) => leftover.item_id === 103)?.quantity, 1)
+})
+
 test('compares gift value when both candidates have no alternatives', () => {
   const result = optimizeAllocation(
     [plan(1, 1, 300), plan(2, 2, 240)], { 101: 1 },
@@ -654,6 +836,38 @@ test('fills leftover SSR into the top priority student closest to completion fir
   assert.equal(byStudent(1)?.allocated_exp, 480)
   assert.equal(byStudent(1)?.remaining_exp, 520)
   assert.equal(result.leftovers.length, 0)
+})
+
+test('uses SSR returned by final search for unfinished top priority students', () => {
+  const result = optimizeAllocation(
+    [
+      plan(1, 1, 100, 'semi_priority'),
+      plan(2, 2, 560, 'top_priority'),
+      plan(3, 3, 180, 'semi_priority'),
+      plan(4, 4, 580, 'semi_priority'),
+    ],
+    { 101: 6, 102: 6, 103: 5, 104: 3 },
+    {
+      1: student(1, ['a', 'b', 'c', 'd']),
+      2: student(2),
+      3: student(3, ['a', 'b', 'c', 'd']),
+      4: student(4, ['a', 'b']),
+    },
+    {
+      101: item(101, 'I101', 'SR', ['c', 'd']),
+      102: item(102, 'I102', 'SR', ['a', 'b', 'c']),
+      103: item(103, 'I103', 'SR', ['a', 'b', 'd']),
+      104: item(104, 'I104', 'SSR', ['a', 'c']),
+    },
+    0, 0, 0, true, true,
+  )
+  const top = result.results.find((row) => row.student_id === 2)!
+
+  assert.equal(top.allocated_exp, 360)
+  assert.equal(top.remaining_exp, 200)
+  assert.equal(top.allocated_items.find((allocation) => allocation.item_id === 104)?.count, 3)
+  assert.ok(result.results.filter((row) => row.priority === 'semi_priority').every((row) => row.remaining_exp === 0))
+  assert.equal(result.leftovers.some((row) => row.item_id === 104), false)
 })
 
 test('schedule passive EXP excludes the 25% bonus', () => {

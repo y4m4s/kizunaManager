@@ -682,29 +682,38 @@ async function start(): Promise<void> {
     })
   })
 
-  server.listen(DEFAULT_PORT, '127.0.0.1', () => {
-    const address = server.address()
-    console.log(`Backend server listening on http://127.0.0.1:${typeof address === 'object' && address ? address.port : DEFAULT_PORT}`)
-  })
-
   let closing = false
-  const shutdown = () => {
+  const shutdown = (code = 0) => {
     if (closing) return
     closing = true
     server.close(() => {
       void optimizerRunner.close().finally(() => {
         database.close()
-        process.exit(0)
+        process.exit(code)
       })
     })
   }
 
-  process.on('SIGINT', shutdown)
-  process.on('SIGTERM', shutdown)
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Backend server could not start (EADDRINUSE): 127.0.0.1:${DEFAULT_PORT} is already in use. Stop the running app or change PORT.`)
+    } else {
+      console.error(`Backend server could not start: ${error.message}`)
+    }
+    shutdown(1)
+  })
+
+  process.on('SIGINT', () => shutdown())
+  process.on('SIGTERM', () => shutdown())
   process.on('message', (message) => {
     if (message === 'shutdown') shutdown()
   })
-  process.on('disconnect', shutdown)
+  process.on('disconnect', () => shutdown())
+
+  server.listen(DEFAULT_PORT, '127.0.0.1', () => {
+    const address = server.address()
+    console.log(`Backend server listening on http://127.0.0.1:${typeof address === 'object' && address ? address.port : DEFAULT_PORT}`)
+  })
 }
 
 await start()

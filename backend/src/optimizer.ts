@@ -1261,6 +1261,19 @@ function expGcd(values: number[]): number {
   return divisor || 1
 }
 
+const ALLOCATION_RESOURCE_METRICS = 4
+
+// 達成状況と無駄EXPが同じなら、汎用品・紫を温存し、最後に消費個数を減らす。
+// 単純な個数最小化では、相性のよいSRよりSSRを消費する配分に偏ってしまう。
+function allocationResourceCost(item: Partial<ItemRecord>): [number, number, number, number] {
+  return [
+    isSelectableBox(item) ? 1 : 0,
+    isBouquet(item) ? 1 : 0,
+    giftRarity(item) === 'SSR' ? 1 : 0,
+    1,
+  ]
+}
+
 function repairAllocationOvershoot(
   states: OptimizeStudentResult[],
   stock: Record<number, number>,
@@ -1335,15 +1348,23 @@ function repairAllocationOvershoot(
       continue
     }
 
-    const previousSum = new Int32Array(maximumSum + 1)
-    const previousChunk = new Int32Array(maximumSum + 1)
-    previousSum.fill(-1)
-    previousChunk.fill(-1)
-    previousSum[0] = 0
-    const chunks: Array<{ count: number; item_id: number; weight: number }> = []
+    // 各合計EXPについて、同じEXPに到達する中で最も資源消費の少ない配分を保持する。
+    const bestCosts = Array.from(
+      { length: ALLOCATION_RESOURCE_METRICS },
+      () => new Int32Array(maximumSum + 1),
+    )
+    bestCosts[0].fill(-1)
+    bestCosts[0][0] = 0
+    const chunks: Array<{
+      count: number
+      item_id: number
+      weight: number
+      chosen: Uint32Array
+    }> = []
 
     for (const candidate of candidates) {
       const unitWeight = candidate.exp_per_item / scale
+      const resourceCost = allocationResourceCost(candidate.item)
       let remainingCount = Math.min(
         candidate.count,
         Math.floor(maximumSum / unitWeight),
@@ -1352,15 +1373,30 @@ function repairAllocationOvershoot(
       while (remainingCount > 0) {
         const count = Math.min(chunkSize, remainingCount)
         const weight = unitWeight * count
-        const chunkIndex = chunks.length
-        chunks.push({ count, item_id: candidate.item_id, weight })
+        // 合計EXPの経路は後から改善されるので、可変の前駆ポインタではなく
+        // チャンクごとの採用ビットを保存する。在庫上限を守って逆順に復元できる。
+        const chosen = new Uint32Array(Math.ceil((maximumSum + 1) / 32))
+        chunks.push({ count, item_id: candidate.item_id, weight, chosen })
+        const chunkCost = resourceCost.map((cost) => cost * count)
         for (let sum = maximumSum - weight; sum >= 0; sum -= 1) {
           const nextSum = sum + weight
-          if (previousSum[sum] < 0 || previousSum[nextSum] >= 0) {
+          if (bestCosts[0][sum] < 0) {
             continue
           }
-          previousSum[nextSum] = sum
-          previousChunk[nextSum] = chunkIndex
+          let improves = bestCosts[0][nextSum] < 0
+          if (!improves) {
+            for (let metric = 0; metric < ALLOCATION_RESOURCE_METRICS; metric += 1) {
+              const nextCost = bestCosts[metric][sum] + chunkCost[metric]
+              if (nextCost === bestCosts[metric][nextSum]) continue
+              improves = nextCost < bestCosts[metric][nextSum]
+              break
+            }
+          }
+          if (!improves) continue
+          for (let metric = 0; metric < ALLOCATION_RESOURCE_METRICS; metric += 1) {
+            bestCosts[metric][nextSum] = bestCosts[metric][sum] + chunkCost[metric]
+          }
+          chosen[nextSum >>> 5] |= 1 << (nextSum & 31)
         }
         remainingCount -= count
         chunkSize *= 2
@@ -1369,7 +1405,7 @@ function repairAllocationOvershoot(
 
     let bestSum = -1
     for (let sum = minimumSum; sum <= maximumSum; sum += 1) {
-      if (previousSum[sum] >= 0) {
+      if (bestCosts[0][sum] >= 0) {
         bestSum = sum
         break
       }
@@ -1380,13 +1416,14 @@ function repairAllocationOvershoot(
 
     const selectedCounts = new Map<number, number>()
     let cursor = bestSum
-    while (cursor > 0) {
-      const chunk = chunks[previousChunk[cursor]]
+    for (let index = chunks.length - 1; index >= 0; index -= 1) {
+      const chunk = chunks[index]
+      if ((chunk.chosen[cursor >>> 5] & (1 << (cursor & 31))) === 0) continue
       selectedCounts.set(
         chunk.item_id,
         (selectedCounts.get(chunk.item_id) || 0) + chunk.count,
       )
-      cursor = previousSum[cursor]
+      cursor -= chunk.weight
     }
 
     for (const allocation of state.allocated_items) {
@@ -1418,9 +1455,10 @@ function repairAllocationOvershoot(
 // 貪欲配分の後に、生徒間・在庫との「移動」と「入れ替え」を試し、
 // 優先度グループ順 (最優先 → 優先 → 準優先) に
 // [完了人数, -不足EXP, 有効EXP, -無駄EXP] を辞書式に比較して改善する手だけを採用する。
-// 本来の指標がすべて同点のときは、最後のキーとして各グループの「不足EXPの二乗和」が
+// 本来の指標がすべて同点のときは、各グループの「不足EXPの二乗和」が
 // 大きい方 (= 不足を一部の生徒に寄せ、他の生徒を完了に近づける方) を選ぶ。
 // これにより、2 手以上かけないと完了できない場面でも平坦な評価で止まらない。
+// それも同点なら、端数調整と同じ資源消費の基準で比較する。
 // 採用するたびに評価値が厳密に増えるため必ず停止する。
 const FULFILLMENT_GROUPS = ['top_priority', 'priority', 'semi_priority']
 const FULFILLMENT_METRICS = 4
@@ -1428,6 +1466,7 @@ const LOCAL_SEARCH_MAX_UNITS = 4
 const LOCAL_SEARCH_MAX_SWEEPS = 64
 
 const CONCENTRATION_OFFSET = FULFILLMENT_GROUPS.length * FULFILLMENT_METRICS
+const RESOURCE_COST_OFFSET = CONCENTRATION_OFFSET + FULFILLMENT_GROUPS.length
 
 function fulfillmentContribution(
   allocatedExp: number,
@@ -1471,6 +1510,9 @@ function improveFulfillmentByLocalSearch(
   // 余りSSRの補填など対象外の割り当ては EXP にのみ含めて固定する。
   const held: Array<Map<number, number>> = []
   const expCache: Array<Map<number, number | null>> = []
+  const resourceCosts = new Map(
+    Object.values(itemsById).map((item) => [item.id, allocationResourceCost(item)]),
+  )
 
   const expFor = (participant: number, itemId: number): number | null => {
     if (participant === pool) {
@@ -1514,14 +1556,30 @@ function improveFulfillmentByLocalSearch(
   }
   held.push(poolHeld)
 
-  const delta = new Array<number>(CONCENTRATION_OFFSET + FULFILLMENT_GROUPS.length).fill(0)
-  const evaluateChange = (first: number, firstNext: number, second: number, secondNext: number): boolean => {
+  const delta = new Array<number>(RESOURCE_COST_OFFSET + ALLOCATION_RESOURCE_METRICS).fill(0)
+  const evaluateChange = (
+    first: number,
+    firstNext: number,
+    second: number,
+    secondNext: number,
+    itemId: number,
+    returnedCount: number,
+    otherId = itemId,
+    addedCount = 0,
+  ): boolean => {
     delta.fill(0)
     for (const [participant, next] of [[first, firstNext], [second, secondNext]]) {
       if (participant === pool) continue
       const group = groupIndex[participant]
       fulfillmentContribution(allocated[participant], need[participant], delta, group, -1)
       fulfillmentContribution(next, need[participant], delta, group, 1)
+    }
+    // 生徒間の移動では総消費量は変わらない。在庫への返却は正、追加は負にする。
+    const cost = resourceCosts.get(itemId)!
+    const otherCost = resourceCosts.get(otherId)!
+    for (let metric = 0; metric < ALLOCATION_RESOURCE_METRICS; metric += 1) {
+      delta[RESOURCE_COST_OFFSET + metric] =
+        returnedCount * cost[metric] - addedCount * otherCost[metric]
     }
     return isPositiveDelta(delta)
   }
@@ -1553,7 +1611,8 @@ function improveFulfillmentByLocalSearch(
             const giverNext = allocated[giver] - count * giverExp
             const receiverNext = allocated[receiver] + count * receiverExp
             // 単純な移動 (在庫からの追加・在庫への返却を含む)
-            if (evaluateChange(giver, giverNext, receiver, receiverNext)) {
+            const returnedCount = receiver === pool ? count : giver === pool ? -count : 0
+            if (evaluateChange(giver, giverNext, receiver, receiverNext, itemId, returnedCount)) {
               shift(giver, receiver, itemId, count)
               improved = true
               break
@@ -1577,6 +1636,10 @@ function improveFulfillmentByLocalSearch(
                   giverNext + otherCount * giverOtherExp,
                   receiver,
                   receiverNext - fromReceiver * receiverOtherExp,
+                  itemId,
+                  returnedCount,
+                  otherId,
+                  receiver === pool ? otherCount : giver === pool ? -fromReceiver : fromPool,
                 )) {
                   shift(giver, receiver, itemId, count)
                   shift(receiver, giver, otherId, fromReceiver)
@@ -1851,6 +1914,10 @@ export function optimizeAllocation(
   const activeStates = includeSemiPriority
     ? [...primaryStates, ...semiPriorityStates]
     : primaryStates
+  const hasAllocationCandidate = () => {
+    const compatibilityStats = buildCompatibilityStats(activeStates, stock, evaluations, itemsById)
+    return pickNextGlobalCandidate(activeStates, stock, itemsById, evaluations, compatibilityStats)
+  }
 
   while (true) {
     // Keep recipients in priority phases, but account for semi-priority demand
@@ -1872,8 +1939,20 @@ export function optimizeAllocation(
     // local search, leftover SSR) strictly improves the lexicographic fulfillment
     // score or leaves the state unchanged, and equivalent swaps keep it equal,
     // so an extra pass is only taken after a strict improvement and the loop terminates.
-    const compatibilityStats = buildCompatibilityStats(activeStates, stock, evaluations, itemsById)
-    if (!pickNextGlobalCandidate(activeStates, stock, itemsById, evaluations, compatibilityStats)) {
+    if (hasAllocationCandidate()) {
+      continue
+    }
+
+    // 再配置で戻った贈り物は、先に未達成の生徒へ配る。その後で資源節約を仕上げる。
+    // これを逆にすると、戻った通常贈り物を達成済みの生徒へ再投入してしまう。
+    // 最後にもう一度探索することで、在庫のまとまりを優先する再配置によって
+    // 温存したボックスなどが再消費された場合も、達成状況を保って取り戻せる。
+    improveFulfillmentByLocalSearch(activeStates, stock, itemsById, evaluations)
+    if (useLeftoverSsrForTop) {
+      // 仕上げで戻った紫も、通常候補に含まれない相性で補填できる場合がある。
+      allocateLeftoverSsrToTopPriority(primaryStates, stock, studentsById, itemsById)
+    }
+    if (!hasAllocationCandidate()) {
       break
     }
   }

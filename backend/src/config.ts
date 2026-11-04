@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_BACKEND_PORT } from '../../shared/ports.ts'
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url))
 export const BACKEND_DIR = path.resolve(CURRENT_DIR, '..')
@@ -17,7 +18,7 @@ export const RECOVERED_DB_PATH = path.join(DATA_DIR, 'bond_manager.recovered.db'
 export const CACHE_META_PATH = path.join(CACHE_DIR, 'meta.json')
 export const FRONTEND_DIST_DIR = path.join(BASE_DIR, 'frontend', 'dist')
 
-export const DEFAULT_PORT = Number(process.env.PORT || 8787)
+export const DEFAULT_PORT = Number(process.env.PORT || DEFAULT_BACKEND_PORT)
 export const MASTER_LANG = 'jp'
 export const MASTER_RESOURCES = ['students', 'items'] as const
 export const MASTER_PRIMARY_BASE_URL = 'https://schaledb.com'

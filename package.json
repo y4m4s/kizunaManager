@@ -15,6 +15,7 @@
     "start": "node --no-warnings --experimental-strip-types scripts/start.mjs",
     "lint": "npm --prefix frontend run lint",
     "test:backend": "node --no-warnings --experimental-strip-types --test backend/src/*.test.ts",
+    "test:dev": "node --test scripts/*.test.mjs",
     "desktop": "npm run build && electron .",
     "desktop:dev": "electron .",
     "desktop:dist": "npm run build && electron-builder --win"
@@ -30,6 +31,7 @@
     "files": [
       "electron/**/*",
       "backend/src/**/*",
+      "shared/**/*",
       "frontend/dist/**/*",
       "package.json",
       "!**/*.test.ts"
